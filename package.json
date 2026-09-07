@@ -1,0 +1,18 @@
+{
+  "name": "ghostchat",
+  "version": "1.0.0",
+  "description": "GhostChat - Real-time messaging with ghost mode",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["chat", "socket.io", "ghost-mode"],
+  "author": "GhostChat Team",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^4.18.2",
+    "socket.io": "^4.8.3"
+  }
+}

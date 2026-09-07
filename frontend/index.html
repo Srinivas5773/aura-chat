@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/aura-logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#051312" />
+    <title>AURA - Messages • Moments • Closer</title>
+    <style>
+      @keyframes twinkle {
+        0% {
+          box-shadow: 0 0 20px rgba(74, 158, 255, 0.3), 0 0 40px rgba(74, 158, 255, 0.1), 0 0 60px rgba(255, 255, 255, 0.1);
+          transform: scale(1);
+        }
+        50% {
+          box-shadow: 0 0 30px rgba(74, 158, 255, 0.5), 0 0 60px rgba(74, 158, 255, 0.2), 0 0 80px rgba(255, 255, 255, 0.2);
+          transform: scale(1.02);
+        }
+        100% {
+          box-shadow: 0 0 25px rgba(74, 158, 255, 0.4), 0 0 50px rgba(74, 158, 255, 0.15), 0 0 70px rgba(255, 255, 255, 0.15);
+          transform: scale(1.01);
+        }
+      }
+      
+      @keyframes sparkle {
+        0%, 100% { opacity: 0; }
+        50% { opacity: 1; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
