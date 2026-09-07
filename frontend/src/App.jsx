@@ -143,7 +143,7 @@ function App() {
   useEffect(() => {
     const socketUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
       ? 'http://localhost:5000' 
-      : 'https://ghostchat-fv0m.onrender.com'
+      : 'https://aura-chat-oz1f.onrender.com'
 
     const newSocket = io(socketUrl, {
       transports: ["websocket", "polling"]
