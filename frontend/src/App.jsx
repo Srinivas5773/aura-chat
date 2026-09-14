@@ -8,6 +8,129 @@ const peerConfig = {
   ]
 }
 
+// Web Audio API Call Ringtone & Sound Effects Synthesizer
+class CallRingtoneManager {
+  constructor() {
+    this.audioCtx = null
+    this.incomingInterval = null
+    this.outgoingInterval = null
+  }
+
+  init() {
+    if (!this.audioCtx) {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext
+      if (AudioContextClass) this.audioCtx = new AudioContextClass()
+    }
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      this.audioCtx.resume()
+    }
+  }
+
+  playIncomingRingtone() {
+    this.stopAll()
+    this.init()
+    if (!this.audioCtx) return
+
+    const playChime = () => {
+      if (!this.audioCtx) return
+      const now = this.audioCtx.currentTime
+
+      // Realistic Smartphone Ringtone Chime Melody (C5 -> E5 -> G5 -> C6)
+      const freqs = [523.25, 659.25, 783.99, 1046.50]
+      freqs.forEach((freq, idx) => {
+        const osc = this.audioCtx.createOscillator()
+        const gain = this.audioCtx.createGain()
+
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(freq, now + idx * 0.12)
+
+        gain.gain.setValueAtTime(0, now + idx * 0.12)
+        gain.gain.linearRampToValueAtTime(0.22, now + idx * 0.12 + 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.35)
+
+        osc.connect(gain)
+        gain.connect(this.audioCtx.destination)
+
+        osc.start(now + idx * 0.12)
+        osc.stop(now + idx * 0.12 + 0.36)
+      })
+    }
+
+    playChime()
+    this.incomingInterval = setInterval(playChime, 1800)
+  }
+
+  playOutgoingRingback() {
+    this.stopAll()
+    this.init()
+    if (!this.audioCtx) return
+
+    const playRingback = () => {
+      if (!this.audioCtx) return
+      const now = this.audioCtx.currentTime
+
+      // Realistic Dual-Tone Telephone Ringback (440Hz + 480Hz)
+      const osc1 = this.audioCtx.createOscillator()
+      const osc2 = this.audioCtx.createOscillator()
+      const gain = this.audioCtx.createGain()
+
+      osc1.frequency.setValueAtTime(440, now)
+      osc2.frequency.setValueAtTime(480, now)
+
+      gain.gain.setValueAtTime(0.12, now)
+      gain.gain.setValueAtTime(0.12, now + 1.8)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 2.0)
+
+      osc1.connect(gain)
+      osc2.connect(gain)
+      gain.connect(this.audioCtx.destination)
+
+      osc1.start(now)
+      osc2.start(now)
+      osc1.stop(now + 2.0)
+      osc2.stop(now + 2.0)
+    }
+
+    playRingback()
+    this.outgoingInterval = setInterval(playRingback, 4000)
+  }
+
+  playCallEndedSound() {
+    this.stopAll()
+    this.init()
+    if (!this.audioCtx) return
+
+    const now = this.audioCtx.currentTime
+    const osc = this.audioCtx.createOscillator()
+    const gain = this.audioCtx.createGain()
+
+    osc.frequency.setValueAtTime(480, now)
+    osc.frequency.setValueAtTime(320, now + 0.15)
+
+    gain.gain.setValueAtTime(0.2, now)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35)
+
+    osc.connect(gain)
+    gain.connect(this.audioCtx.destination)
+
+    osc.start(now)
+    osc.stop(now + 0.36)
+  }
+
+  stopAll() {
+    if (this.incomingInterval) {
+      clearInterval(this.incomingInterval)
+      this.incomingInterval = null
+    }
+    if (this.outgoingInterval) {
+      clearInterval(this.outgoingInterval)
+      this.outgoingInterval = null
+    }
+  }
+}
+
+const ringtoneManager = new CallRingtoneManager()
+
 function App() {
   const [socket, setSocket] = useState(null)
   const [roomId, setRoomId] = useState('')
@@ -152,17 +275,26 @@ function App() {
     }
   }, [messages.length])
 
-  // Call Timer Increment
+  // Call Timer Increment & Ringtone Audio Control
   useEffect(() => {
     if (callState === 'connected') {
       callTimerRef.current = setInterval(() => {
         setCallDuration(prev => prev + 1)
       }, 1000)
+      ringtoneManager.stopAll()
+    } else if (callState === 'incoming') {
+      ringtoneManager.playIncomingRingtone()
+    } else if (callState === 'outgoing') {
+      ringtoneManager.playOutgoingRingback()
     } else {
       clearInterval(callTimerRef.current)
       setCallDuration(0)
+      ringtoneManager.stopAll()
     }
-    return () => clearInterval(callTimerRef.current)
+    return () => {
+      clearInterval(callTimerRef.current)
+      ringtoneManager.stopAll()
+    }
   }, [callState])
 
   // Cleanup WebRTC Call & Streams
@@ -486,11 +618,13 @@ function App() {
   }
 
   const rejectCall = () => {
+    ringtoneManager.playCallEndedSound()
     if (socket && roomId) socket.emit('reject_call', { roomId })
     cleanupCall()
   }
 
   const endCall = () => {
+    ringtoneManager.playCallEndedSound()
     if (socket && roomId) socket.emit('end_call', { roomId })
     cleanupCall()
   }
