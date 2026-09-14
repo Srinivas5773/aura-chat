@@ -243,6 +243,37 @@ function App() {
 
   const peerConnectionRef = useRef(null)
   const localStreamRef = useRef(null)
+  const remoteStreamRef = useRef(null)
+  const iceCandidatesQueueRef = useRef([])
+
+  const processQueuedIceCandidates = async () => {
+    const pc = peerConnectionRef.current
+    if (!pc || !pc.remoteDescription || !pc.remoteDescription.type) return
+    console.log(`Processing ${iceCandidatesQueueRef.current.length} queued ICE candidates`)
+    while (iceCandidatesQueueRef.current.length > 0) {
+      const candidate = iceCandidatesQueueRef.current.shift()
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate))
+      } catch (e) {
+        console.error('Error adding queued ICE candidate:', e)
+      }
+    }
+  }
+
+  const addOrQueueIceCandidate = async (candidate) => {
+    if (!candidate) return
+    const pc = peerConnectionRef.current
+    if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate))
+      } catch (e) {
+        console.error('Error adding ICE candidate:', e)
+      }
+    } else {
+      console.log('Queuing ICE candidate until remote description is set:', candidate)
+      iceCandidatesQueueRef.current.push(candidate)
+    }
+  }
 
   // Voice Note Recorder Refs
   const mediaRecorderRef = useRef(null)
@@ -302,6 +333,27 @@ function App() {
     }
   }, [callState])
 
+  // Ensure Remote Audio & Video Stream Binding when call is connected
+  useEffect(() => {
+    if (callState === 'connected') {
+      if (localStreamRef.current && localVideoRef.current) {
+        localVideoRef.current.srcObject = localStreamRef.current
+      }
+      if (remoteStreamRef.current) {
+        if (remoteAudioRef.current) {
+          remoteAudioRef.current.srcObject = remoteStreamRef.current
+          remoteAudioRef.current.muted = false
+          remoteAudioRef.current.volume = 1.0
+          remoteAudioRef.current.play().catch(e => console.error('Remote audio play error in callState useEffect:', e))
+        }
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStreamRef.current
+          remoteVideoRef.current.play().catch(e => console.error('Remote video play error in callState useEffect:', e))
+        }
+      }
+    }
+  }, [callState])
+
   // Cleanup WebRTC Call & Streams
   const cleanupCall = () => {
     if (peerConnectionRef.current) {
@@ -312,6 +364,8 @@ function App() {
       localStreamRef.current.getTracks().forEach(track => track.stop())
       localStreamRef.current = null
     }
+    remoteStreamRef.current = null
+    iceCandidatesQueueRef.current = []
     if (localVideoRef.current) localVideoRef.current.srcObject = null
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null
@@ -448,6 +502,7 @@ function App() {
       if (peerConnectionRef.current && sdpAnswer) {
         try {
           await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(sdpAnswer))
+          await processQueuedIceCandidates()
         } catch (e) {
           console.error('Error setting remote description on caller:', e)
         }
@@ -455,13 +510,7 @@ function App() {
     })
 
     newSocket.on('webrtc_ice_candidate', async ({ candidate }) => {
-      if (peerConnectionRef.current && candidate) {
-        try {
-          await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate))
-        } catch (e) {
-          console.error('Error adding ICE candidate:', e)
-        }
-      }
+      await addOrQueueIceCandidate(candidate)
     })
 
     newSocket.on('call_rejected', () => {
@@ -510,12 +559,18 @@ function App() {
     }
 
     pc.ontrack = (event) => {
-      console.log('WebRTC Remote Track Received:', event.track.kind, event.streams[0])
-      const remoteStream = event.streams[0] || new MediaStream([event.track])
+      console.log('WebRTC Remote Track Received:', event.track.kind, event.streams)
+      let remoteStream = event.streams && event.streams[0]
+      if (!remoteStream) {
+        remoteStream = remoteStreamRef.current || new MediaStream()
+        remoteStream.addTrack(event.track)
+      }
+      remoteStreamRef.current = remoteStream
 
       // 1. Dedicated Remote Audio Player (ALWAYS active in DOM for 100% sound playback)
       if (remoteAudioRef.current) {
         remoteAudioRef.current.srcObject = remoteStream
+        remoteAudioRef.current.muted = false
         remoteAudioRef.current.volume = 1.0
         remoteAudioRef.current.play().catch(e => console.error('Remote audio play error:', e))
       }
@@ -597,6 +652,7 @@ function App() {
   // Start WebRTC Call
   const startCall = async (type) => {
     if (!socket || !roomId) return
+    iceCandidatesQueueRef.current = []
     setCallType(type)
     setCallState('outgoing')
 
@@ -606,7 +662,10 @@ function App() {
       if (localVideoRef.current) localVideoRef.current.srcObject = stream
 
       const pc = createPeerConnection(stream)
-      const offer = await pc.createOffer()
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: type === 'video'
+      })
       await pc.setLocalDescription(offer)
 
       socket.emit('call_user', {
@@ -634,8 +693,13 @@ function App() {
 
       const pc = createPeerConnection(stream)
       await pc.setRemoteDescription(new RTCSessionDescription(incomingSdpOffer))
-      const answer = await pc.createAnswer()
+      const answer = await pc.createAnswer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: callType === 'video'
+      })
       await pc.setLocalDescription(answer)
+
+      await processQueuedIceCandidates()
 
       socket.emit('accept_call', { roomId, sdpAnswer: answer })
     } catch (err) {
@@ -1041,6 +1105,8 @@ function App() {
 
   return (
     <div className="android-wrapper">
+      {/* Dedicated Remote Audio Player for 100% Guaranteed Sound across all call states */}
+      <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
       <div className="android-device" style={{ backgroundColor: theme.bg }}>
         {/* Camera Punch Hole Notch */}
         <div className="android-notch"></div>
