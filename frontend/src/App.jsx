@@ -1185,13 +1185,14 @@ function App() {
               </div>
 
               <div style={{
-                padding: '14px',
+                padding: '16px 14px',
                 textAlign: 'center',
-                fontSize: '11px',
-                color: '#8696a0',
-                borderTop: '1px solid rgba(0, 245, 196, 0.08)'
+                borderTop: '1px solid rgba(0, 245, 196, 0.15)',
+                backgroundColor: 'rgba(0, 245, 196, 0.02)'
               }}>
-                🔒 Real MediaRecorder Voice Notes • WebRTC Video Calling
+                <span className="developer-shining-text">
+                  ✨ Developed by Srinivas ✨
+                </span>
               </div>
             </div>
           ) : (

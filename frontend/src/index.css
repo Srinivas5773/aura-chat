@@ -146,3 +146,40 @@ html, body, #root {
     padding: 0;
   }
 }
+
+/* Shining Highlighting Developer Text Animation */
+@keyframes shining-glow {
+  0% {
+    background-position: -200% 0;
+    filter: drop-shadow(0 0 8px rgba(0, 245, 196, 0.6));
+  }
+  50% {
+    background-position: 200% 0;
+    filter: drop-shadow(0 0 20px rgba(0, 245, 196, 1)) drop-shadow(0 0 35px rgba(0, 245, 196, 0.8));
+  }
+  100% {
+    background-position: -200% 0;
+    filter: drop-shadow(0 0 8px rgba(0, 245, 196, 0.6));
+  }
+}
+
+.developer-shining-text {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  background: linear-gradient(
+    90deg,
+    #00f5c4 0%,
+    #ffffff 25%,
+    #00f5c4 50%,
+    #70e0ff 75%,
+    #00f5c4 100%
+  );
+  background-size: 200% auto;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shining-glow 3s linear infinite;
+  display: inline-block;
+}
