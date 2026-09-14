@@ -24,9 +24,14 @@ io.on('connection', (socket) => {
     if (!rooms[roomId]) {
       rooms[roomId] = {
         users: [],
+        messages: [],
         ghostMode: false,
         ghostTimer: null
       };
+    }
+
+    if (!rooms[roomId].messages) {
+      rooms[roomId].messages = [];
     }
     
     if (rooms[roomId].users.length >= 2 && !rooms[roomId].users.some(u => u.id === socket.id)) {
@@ -38,7 +43,10 @@ io.on('connection', (socket) => {
     
     const existingIndex = rooms[roomId].users.findIndex(u => u.id === socket.id);
     if (existingIndex === -1) {
-      rooms[roomId].users.push({ id: socket.id, name: userName || 'User' });
+      rooms[roomId].users.push({ id: socket.id, name: userName || 'User', isOnline: true });
+    } else {
+      rooms[roomId].users[existingIndex].isOnline = true;
+      rooms[roomId].users[existingIndex].name = userName || rooms[roomId].users[existingIndex].name;
     }
     
     io.to(roomId).emit('user_joined', {
@@ -46,23 +54,57 @@ io.on('connection', (socket) => {
       users: rooms[roomId].users,
       ghostMode: rooms[roomId].ghostMode
     });
+
+    // Send room message history to the newly connected/reconnected user
+    socket.emit('room_history', rooms[roomId].messages);
   });
   
   socket.on('send_message', (payload) => {
     const { roomId } = payload;
+    if (rooms[roomId]) {
+      if (!rooms[roomId].messages) rooms[roomId].messages = [];
+      rooms[roomId].messages.push(payload);
+    }
     socket.to(roomId).emit('receive_message', payload);
   });
 
   socket.on('mark_read', ({ roomId, messageId }) => {
+    if (rooms[roomId] && rooms[roomId].messages) {
+      const msg = rooms[roomId].messages.find(m => m.id === messageId);
+      if (msg) msg.isRead = true;
+    }
     socket.to(roomId).emit('message_read', { messageId });
   });
 
   socket.on('react_message', ({ roomId, messageId, emoji, userName }) => {
+    if (rooms[roomId] && rooms[roomId].messages) {
+      const msg = rooms[roomId].messages.find(m => m.id === messageId);
+      if (msg) {
+        msg.reactions = msg.reactions || {};
+        const existing = msg.reactions[emoji] || [];
+        msg.reactions[emoji] = existing.includes(userName)
+          ? existing.filter(r => r !== userName)
+          : [...existing, userName];
+      }
+    }
     io.to(roomId).emit('message_reacted', { messageId, emoji, userName });
   });
 
   // Interactive Poll Voting
   socket.on('vote_poll', ({ roomId, messageId, optionIndex, userName }) => {
+    if (rooms[roomId] && rooms[roomId].messages) {
+      const msg = rooms[roomId].messages.find(m => m.id === messageId);
+      if (msg && msg.poll && msg.poll.options[optionIndex]) {
+        msg.poll.options.forEach((opt, idx) => {
+          opt.votes = opt.votes || [];
+          if (idx === optionIndex) {
+            if (!opt.votes.includes(userName)) opt.votes.push(userName);
+          } else {
+            opt.votes = opt.votes.filter(v => v !== userName);
+          }
+        });
+      }
+    }
     io.to(roomId).emit('poll_voted', { messageId, optionIndex, userName });
   });
 
@@ -110,6 +152,9 @@ io.on('connection', (socket) => {
   });
   
   socket.on('clear_chat', ({ roomId }) => {
+    if (rooms[roomId]) {
+      rooms[roomId].messages = [];
+    }
     io.to(roomId).emit('clear_chat');
   });
   
@@ -127,8 +172,12 @@ io.on('connection', (socket) => {
       const room = rooms[roomId];
       const userIndex = room.users.findIndex(u => u.id === socket.id);
       if (userIndex !== -1) {
+        const disconnectedUser = room.users[userIndex];
         room.users.splice(userIndex, 1);
-        socket.to(roomId).emit('user_left', { userCount: room.users.length });
+        socket.to(roomId).emit('user_left', { 
+          userCount: room.users.length,
+          leftUser: disconnectedUser
+        });
         
         if (room.users.length === 0) {
           delete rooms[roomId];

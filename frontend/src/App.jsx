@@ -23,7 +23,13 @@ function App() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [showScrollButtons, setShowScrollButtons] = useState(false)
   const [timeString, setTimeString] = useState('')
+  const [partnerOnline, setPartnerOnline] = useState(false)
   const [roomError, setRoomError] = useState('')
+
+  const userNameRef = useRef(userName)
+  useEffect(() => {
+    userNameRef.current = userName
+  }, [userName])
 
   // Real Audio Voice Recording States
   const [isRecordingAudio, setIsRecordingAudio] = useState(false)
@@ -149,6 +155,32 @@ function App() {
       transports: ["websocket", "polling"]
     });
     setSocket(newSocket);
+
+    newSocket.on('room_history', (history) => {
+      if (Array.isArray(history)) {
+        setMessages(history.map(msg => ({
+          ...msg,
+          isOwn: msg.senderName === userNameRef.current || msg.isOwn,
+          expiresAt: msg.expiresIn ? Date.now() + msg.expiresIn * 1000 : null
+        })));
+      }
+    });
+
+    newSocket.on('user_joined', ({ users }) => {
+      if (users && users.length > 1) {
+        const partner = users.find(u => u.id !== newSocket.id)
+        if (partner) {
+          setOtherUserName(partner.name || 'Partner')
+          setPartnerOnline(true)
+        }
+      } else {
+        setPartnerOnline(false)
+      }
+    })
+
+    newSocket.on('user_left', () => {
+      setPartnerOnline(false)
+    })
 
     newSocket.on('receive_message', (msgObj) => {
       const processedObj = {
@@ -991,10 +1023,10 @@ function App() {
                         {roomId}
                       </span>
                     </div>
-                    <div style={{ color: otherUserTyping ? theme.primary : '#8696a0', fontSize: '11px' }}>
+                    <div style={{ color: otherUserTyping ? theme.primary : (partnerOnline ? '#00f5c4' : '#8696a0'), fontSize: '11px' }}>
                       {otherUserTyping 
-                        ? (ghostMode ? 'A ghost is typing...' : 'typing...') 
-                        : (ghostMode ? '👻 Ghost Mode' : 'online')}
+                        ? (ghostMode ? '👻 A ghost is typing...' : 'typing...') 
+                        : (ghostMode ? '👻 Ghost Mode' : (partnerOnline ? '🟢 Online' : '🔴 Offline'))}
                     </div>
                   </div>
                 </div>
