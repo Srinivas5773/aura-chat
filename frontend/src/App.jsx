@@ -41,6 +41,21 @@ function App() {
   // Reply & Reaction States
   const [replyingToMessage, setReplyingToMessage] = useState(null)
   const [activeReactionMsgId, setActiveReactionMsgId] = useState(null)
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState(null)
+
+  const downloadImage = (mediaUrl, fileName = 'aura_photo.png') => {
+    try {
+      const link = document.createElement('a')
+      link.href = mediaUrl
+      link.download = fileName || `aura_photo_${Date.now()}.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (err) {
+      console.error('Error downloading image:', err)
+      window.open(mediaUrl, '_blank')
+    }
+  }
 
   // Next-Gen Feature States
   const [selectedTheme, setSelectedTheme] = useState('aura')
@@ -599,7 +614,8 @@ function App() {
         roomId,
         type: 'image',
         mediaUrl: reader.result,
-        text: file.name,
+        fileName: file.name,
+        text: '',
         senderName: userName || 'You',
         isOwn: true,
         isRead: false,
@@ -1274,20 +1290,63 @@ function App() {
                           })}
                         </div>
                       ) : msg.type === 'image' ? (
-                        <div>
-                          <img
-                            src={msg.mediaUrl}
-                            alt="Attachment"
+                        <div style={{ position: 'relative', maxWidth: '260px' }}>
+                          <div
+                            onClick={() => setSelectedPreviewImage(msg)}
                             style={{
-                              maxWidth: '100%',
-                              maxHeight: '200px',
-                              borderRadius: '8px',
-                              marginBottom: '4px',
-                              display: 'block',
-                              border: `1px solid ${theme.primary}44`
+                              position: 'relative',
+                              borderRadius: '12px',
+                              overflow: 'hidden',
+                              cursor: 'pointer',
+                              border: `1px solid ${theme.primary}33`,
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
                             }}
-                          />
-                          {msg.text && <div style={{ fontSize: '13px' }}>{msg.text}</div>}
+                          >
+                            <img
+                              src={msg.mediaUrl}
+                              alt="Shared photo"
+                              style={{
+                                width: '100%',
+                                maxHeight: '260px',
+                                objectFit: 'cover',
+                                display: 'block'
+                              }}
+                            />
+
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                downloadImage(msg.mediaUrl, msg.fileName || 'aura_image.png')
+                              }}
+                              title="Download Image"
+                              style={{
+                                position: 'absolute',
+                                top: '8px',
+                                right: '8px',
+                                backgroundColor: 'rgba(0, 0, 0, 0.65)',
+                                color: theme.primary,
+                                border: `1px solid ${theme.primary}66`,
+                                borderRadius: '50%',
+                                width: '32px',
+                                height: '32px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '14px',
+                                cursor: 'pointer',
+                                backdropFilter: 'blur(4px)',
+                                zIndex: 5
+                              }}
+                            >
+                              ⬇️
+                            </button>
+                          </div>
+
+                          {msg.text && !msg.text.includes('.png') && !msg.text.includes('.jpg') && !msg.text.includes('Screenshot') && (
+                            <div style={{ fontSize: '13px', marginTop: '4px', padding: '0 2px', color: theme.text }}>
+                              {msg.text}
+                            </div>
+                          )}
                         </div>
                       ) : msg.type === 'voice' ? (
                         /* REAL Playable HTML5 Audio Voice Note */
@@ -1958,15 +2017,128 @@ function App() {
               )}
             </div>
           )}
-        </div>
+        {/* Full-Screen WhatsApp-Style Image Preview & Download Modal */}
+        {selectedPreviewImage && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.95)',
+            zIndex: 99999,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            padding: '16px'
+          }}>
+            {/* Top Header Bar */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              color: '#ffffff',
+              padding: '8px 14px',
+              backgroundColor: 'rgba(255,255,255,0.08)',
+              borderRadius: '12px',
+              backdropFilter: 'blur(10px)'
+            }}>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: theme.primary }}>
+                  📷 {selectedPreviewImage.senderName || 'Photo'}
+                </div>
+                <div style={{ fontSize: '11px', color: '#aebac1' }}>
+                  {selectedPreviewImage.time}
+                </div>
+              </div>
 
-        {/* Android Gesture Bar */}
-        <div className="android-nav-bar" style={{ backgroundColor: theme.header }}>
-          <div className="android-gesture-pill"></div>
-        </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <button
+                  onClick={() => downloadImage(selectedPreviewImage.mediaUrl, selectedPreviewImage.fileName || 'aura_photo.png')}
+                  style={{
+                    backgroundColor: theme.primary,
+                    color: '#051312',
+                    border: 'none',
+                    borderRadius: '20px',
+                    padding: '6px 14px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: `0 0 12px ${theme.primary}66`
+                  }}
+                >
+                  <span>⬇️</span>
+                  <span>Download</span>
+                </button>
+
+                <button
+                  onClick={() => setSelectedPreviewImage(null)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#e9edef',
+                    fontSize: '22px',
+                    cursor: 'pointer',
+                    padding: '0 6px'
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Centered Large Image */}
+            <div style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '12px 0',
+              overflow: 'hidden'
+            }}>
+              <img
+                src={selectedPreviewImage.mediaUrl}
+                alt="Full Preview"
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '76vh',
+                  objectFit: 'contain',
+                  borderRadius: '12px',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)'
+                }}
+              />
+            </div>
+
+            {/* Bottom Download Bar */}
+            <div style={{ textAlign: 'center', paddingBottom: '10px' }}>
+              <button
+                onClick={() => downloadImage(selectedPreviewImage.mediaUrl, selectedPreviewImage.fileName || 'aura_photo.png')}
+                style={{
+                  width: '100%',
+                  maxWidth: '300px',
+                  padding: '12px',
+                  backgroundColor: theme.primary,
+                  color: '#051312',
+                  border: 'none',
+                  borderRadius: '25px',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  boxShadow: `0 4px 18px ${theme.primary}55`
+                }}
+              >
+                📥 Download Image to Device
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
-  )
+  </div>
+)
 }
 
 export default App
