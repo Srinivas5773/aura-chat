@@ -4,7 +4,11 @@ import io from 'socket.io-client'
 const peerConfig = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' }
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' }
   ]
 }
 
@@ -234,6 +238,7 @@ function App() {
   const fileInputRef = useRef(null)
   const localVideoRef = useRef(null)
   const remoteVideoRef = useRef(null)
+  const remoteAudioRef = useRef(null)
   const callTimerRef = useRef(null)
 
   const peerConnectionRef = useRef(null)
@@ -309,6 +314,7 @@ function App() {
     }
     if (localVideoRef.current) localVideoRef.current.srcObject = null
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null
     setCallState(null)
     setIncomingSdpOffer(null)
     setIsMicMuted(false)
@@ -498,12 +504,26 @@ function App() {
     const pc = new RTCPeerConnection(peerConfig)
 
     if (stream) {
-      stream.getTracks().forEach(track => pc.addTrack(track, stream))
+      stream.getTracks().forEach(track => {
+        pc.addTrack(track, stream)
+      })
     }
 
     pc.ontrack = (event) => {
-      if (remoteVideoRef.current && event.streams[0]) {
-        remoteVideoRef.current.srcObject = event.streams[0]
+      console.log('WebRTC Remote Track Received:', event.track.kind, event.streams[0])
+      const remoteStream = event.streams[0] || new MediaStream([event.track])
+
+      // 1. Dedicated Remote Audio Player (ALWAYS active in DOM for 100% sound playback)
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream
+        remoteAudioRef.current.volume = 1.0
+        remoteAudioRef.current.play().catch(e => console.error('Remote audio play error:', e))
+      }
+
+      // 2. Remote Video Player
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream
+        remoteVideoRef.current.play().catch(e => console.error('Remote video play error:', e))
       }
     }
 
@@ -530,10 +550,17 @@ function App() {
       height: { ideal: 720, max: 1080 }
     } : false
 
-    return await navigator.mediaDevices.getUserMedia({
+    const stream = await navigator.mediaDevices.getUserMedia({
       audio: audioConstraints,
       video: videoConstraints
     })
+
+    // Force all audio tracks to be explicitly enabled
+    stream.getAudioTracks().forEach(track => {
+      track.enabled = true
+    })
+
+    return stream
   }
 
   const toggleCameraFacingMode = async () => {
@@ -2236,6 +2263,9 @@ function App() {
                 justifyContent: 'center',
                 backgroundColor: '#020908'
               }}>
+                {/* Dedicated Remote Audio Player for 100% Guaranteed Sound */}
+                <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
+
                 {/* Remote Video Stream */}
                 <video
                   ref={remoteVideoRef}
