@@ -154,9 +154,23 @@ function App() {
   const [roomError, setRoomError] = useState('')
 
   const userNameRef = useRef(userName)
+  const roomIdRef = useRef(roomId)
+  const isJoinedRef = useRef(isJoined)
+
   useEffect(() => {
     userNameRef.current = userName
-  }, [userName])
+    roomIdRef.current = roomId
+    isJoinedRef.current = isJoined
+  }, [userName, roomId, isJoined])
+
+  // Check for room parameter in URL on load
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const roomParam = urlParams.get('room')
+    if (roomParam) {
+      setRoomId(roomParam.trim())
+    }
+  }, [])
 
   // Real Audio Voice Recording States
   const [isRecordingAudio, setIsRecordingAudio] = useState(false)
@@ -388,6 +402,17 @@ function App() {
     });
     setSocket(newSocket);
 
+    newSocket.on('connect', () => {
+      console.log('Socket connected:', newSocket.id)
+      if (isJoinedRef.current && roomIdRef.current) {
+        console.log(`Auto re-joining room ${roomIdRef.current} on reconnect`)
+        newSocket.emit('join_room', {
+          roomId: roomIdRef.current,
+          userName: userNameRef.current || 'User'
+        })
+      }
+    })
+
     newSocket.on('room_history', (history) => {
       if (Array.isArray(history)) {
         setMessages(history.map(msg => ({
@@ -480,13 +505,6 @@ function App() {
       if (!canvas) return
       const ctx = canvas.getContext('2d')
       ctx.clearRect(0, 0, canvas.width, canvas.height)
-    })
-
-    newSocket.on('user_joined', ({ users }) => {
-      if (users && users.length > 1) {
-        const partner = users.find(u => u.id !== newSocket.id)
-        if (partner) setOtherUserName(partner.name || 'Partner')
-      }
     })
 
     // WebRTC Signaling Events
@@ -831,31 +849,39 @@ function App() {
 
   const handleCreateRoom = () => {
     if (!socket) return
-    if (!userName.trim()) {
-      setRoomError('Please enter your name first.')
-      return
-    }
+    const nameToUse = userName.trim() || 'User'
+    setUserName(nameToUse)
     setRoomError('')
     const newRoomId = Math.random().toString(36).substring(2, 8)
     setRoomId(newRoomId)
     setIsJoined(true)
-    socket.emit('join_room', { roomId: newRoomId, userName: userName.trim() })
+    window.history.pushState({}, '', `?room=${newRoomId}`)
+    socket.emit('join_room', { roomId: newRoomId, userName: nameToUse })
   }
 
   const handleJoinRoom = () => {
     if (!socket) return
-    if (!userName.trim()) {
-      setRoomError('Please enter your name first.')
-      return
-    }
+    const nameToUse = userName.trim() || 'User'
+    setUserName(nameToUse)
     setRoomError('')
-    const inputRoomId = prompt('Enter Room ID Code:')
-    if (inputRoomId && inputRoomId.trim()) {
-      const trimmed = inputRoomId.trim()
-      setRoomId(trimmed)
-      setIsJoined(true)
-      socket.emit('join_room', { roomId: trimmed, userName: userName.trim() })
-    }
+    const inputRoomId = prompt('Enter Room ID Code (or leave blank for public room "aura"):')
+    const targetRoomId = (inputRoomId && inputRoomId.trim()) ? inputRoomId.trim() : 'aura'
+    setRoomId(targetRoomId)
+    setIsJoined(true)
+    window.history.pushState({}, '', `?room=${targetRoomId}`)
+    socket.emit('join_room', { roomId: targetRoomId, userName: nameToUse })
+  }
+
+  const handleJoinPublicRoom = () => {
+    if (!socket) return
+    const nameToUse = userName.trim() || 'User'
+    setUserName(nameToUse)
+    setRoomError('')
+    const targetRoomId = 'aura'
+    setRoomId(targetRoomId)
+    setIsJoined(true)
+    window.history.pushState({}, '', `?room=${targetRoomId}`)
+    socket.emit('join_room', { roomId: targetRoomId, userName: nameToUse })
   }
 
   const handleLeaveRoom = () => {
@@ -863,6 +889,7 @@ function App() {
     setRoomId('')
     setMessages([])
     setRoomError('')
+    window.history.pushState({}, '', window.location.pathname)
   }
 
   const handleSendText = () => {
@@ -1239,7 +1266,7 @@ function App() {
                 />
 
                 <button
-                  onClick={handleCreateRoom}
+                  onClick={handleJoinPublicRoom}
                   style={{
                     width: '100%',
                     maxWidth: '280px',
@@ -1255,7 +1282,26 @@ function App() {
                     boxShadow: `0 4px 18px ${theme.primary}55`
                   }}
                 >
-                  ✨ Create AURA Room
+                  ⚡ Join Public Test Room ("aura")
+                </button>
+
+                <button
+                  onClick={handleCreateRoom}
+                  style={{
+                    width: '100%',
+                    maxWidth: '280px',
+                    padding: '14px',
+                    backgroundColor: 'rgba(0, 245, 196, 0.1)',
+                    color: theme.primary,
+                    border: `1px solid ${theme.primary}`,
+                    borderRadius: '25px',
+                    fontSize: '15px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    marginBottom: '10px'
+                  }}
+                >
+                  ✨ Create New Room Code
                 </button>
 
                 <button
@@ -1265,15 +1311,15 @@ function App() {
                     maxWidth: '280px',
                     padding: '14px',
                     backgroundColor: theme.header,
-                    color: theme.primary,
-                    border: `1px solid ${theme.primary}`,
+                    color: '#aebac1',
+                    border: '1px solid #333',
                     borderRadius: '25px',
                     fontSize: '15px',
                     fontWeight: 'bold',
                     cursor: 'pointer'
                   }}
                 >
-                  🔑 Join Existing Room Code
+                  🔑 Enter Custom Room Code
                 </button>
               </div>
 
@@ -1334,8 +1380,26 @@ function App() {
                   <div>
                     <div style={{ color: theme.text, fontSize: '14px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span>{otherUserName}</span>
-                      <span style={{ fontSize: '10px', color: theme.primary, backgroundColor: 'rgba(0,245,196,0.1)', padding: '1px 6px', borderRadius: '8px' }}>
-                        {roomId}
+                      <span
+                        onClick={() => {
+                          const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`
+                          navigator.clipboard.writeText(shareUrl).then(() => alert(`Room Link Copied!\nShare this link to join: ${shareUrl}`))
+                        }}
+                        title="Click to Copy Shareable Room Link"
+                        style={{
+                          fontSize: '10px',
+                          color: theme.primary,
+                          backgroundColor: 'rgba(0,245,196,0.15)',
+                          border: `1px solid ${theme.primary}44`,
+                          padding: '2px 8px',
+                          borderRadius: '10px',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        🏷️ {roomId} 📋
                       </span>
                     </div>
                     <div style={{ color: otherUserTyping ? theme.primary : (partnerOnline ? '#00f5c4' : '#8696a0'), fontSize: '11px' }}>
