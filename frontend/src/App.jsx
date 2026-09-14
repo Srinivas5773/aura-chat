@@ -1266,7 +1266,7 @@ function App() {
                 />
 
                 <button
-                  onClick={handleJoinPublicRoom}
+                  onClick={handleCreateRoom}
                   style={{
                     width: '100%',
                     maxWidth: '280px',
@@ -1282,26 +1282,7 @@ function App() {
                     boxShadow: `0 4px 18px ${theme.primary}55`
                   }}
                 >
-                  ⚡ Join Public Test Room ("aura")
-                </button>
-
-                <button
-                  onClick={handleCreateRoom}
-                  style={{
-                    width: '100%',
-                    maxWidth: '280px',
-                    padding: '14px',
-                    backgroundColor: 'rgba(0, 245, 196, 0.1)',
-                    color: theme.primary,
-                    border: `1px solid ${theme.primary}`,
-                    borderRadius: '25px',
-                    fontSize: '15px',
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                    marginBottom: '10px'
-                  }}
-                >
-                  ✨ Create New Room Code
+                  ✨ Create AURA Room
                 </button>
 
                 <button
@@ -1311,15 +1292,15 @@ function App() {
                     maxWidth: '280px',
                     padding: '14px',
                     backgroundColor: theme.header,
-                    color: '#aebac1',
-                    border: '1px solid #333',
+                    color: theme.primary,
+                    border: `1px solid ${theme.primary}`,
                     borderRadius: '25px',
                     fontSize: '15px',
                     fontWeight: 'bold',
                     cursor: 'pointer'
                   }}
                 >
-                  🔑 Enter Custom Room Code
+                  🔑 Join Existing Room Code
                 </button>
               </div>
 
