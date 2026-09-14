@@ -68,13 +68,36 @@ function App() {
   const [pollQuestion, setPollQuestion] = useState('')
   const [pollOptions, setPollOptions] = useState(['', ''])
 
-  // WebRTC Call Overlay States
+  // WebRTC Call Overlay States & Camera Controls
   const [callState, setCallState] = useState(null) // null | 'outgoing' | 'incoming' | 'connected'
   const [callType, setCallType] = useState('video') // 'audio' | 'video'
   const [callDuration, setCallDuration] = useState(0)
   const [isMicMuted, setIsMicMuted] = useState(false)
   const [isVideoMuted, setIsVideoMuted] = useState(false)
   const [incomingSdpOffer, setIncomingSdpOffer] = useState(null)
+  const [facingMode, setFacingMode] = useState('user') // 'user' (front) | 'environment' (back)
+  const [activeVideoFilter, setActiveVideoFilter] = useState('none')
+  const [showFilterPicker, setShowFilterPicker] = useState(false)
+
+  const videoFilterStyles = {
+    none: 'none',
+    aura: 'drop-shadow(0 0 15px #00f5c4) contrast(1.15) saturate(1.2)',
+    vintage: 'sepia(0.4) contrast(1.15) brightness(1.05)',
+    stealth: 'grayscale(1) contrast(1.3) brightness(0.9)',
+    cyberpunk: 'hue-rotate(180deg) saturate(1.8) contrast(1.2)',
+    beauty: 'brightness(1.1) saturate(1.1) blur(0.4px)',
+    blur: 'blur(12px)'
+  }
+
+  const videoFilterLabels = [
+    { id: 'none', label: 'Normal' },
+    { id: 'aura', label: '✨ AURA Glow' },
+    { id: 'vintage', label: '🌅 Retro Warm' },
+    { id: 'stealth', label: '🕶️ Stealth B&W' },
+    { id: 'cyberpunk', label: '👾 Cyberpunk' },
+    { id: 'beauty', label: '💖 Soft Beauty' },
+    { id: 'blur', label: '🔮 Bokeh Blur' }
+  ]
 
   // WebRTC & Media Refs
   const canvasRef = useRef(null)
@@ -158,6 +181,8 @@ function App() {
     setIncomingSdpOffer(null)
     setIsMicMuted(false)
     setIsVideoMuted(false)
+    setFacingMode('user')
+    setShowFilterPicker(false)
   }
 
   // Socket Setup & WebRTC Event Handlers
@@ -360,6 +385,56 @@ function App() {
     return pc
   }
 
+  const getMediaStream = async (type, currentFacingMode = facingMode) => {
+    const audioConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    }
+
+    const videoConstraints = type === 'video' ? {
+      facingMode: currentFacingMode,
+      width: { ideal: 1280, max: 1920 },
+      height: { ideal: 720, max: 1080 }
+    } : false
+
+    return await navigator.mediaDevices.getUserMedia({
+      audio: audioConstraints,
+      video: videoConstraints
+    })
+  }
+
+  const toggleCameraFacingMode = async () => {
+    if (callType !== 'video' || !localStreamRef.current) return
+    const nextFacingMode = facingMode === 'user' ? 'environment' : 'user'
+    setFacingMode(nextFacingMode)
+
+    try {
+      const oldTrack = localStreamRef.current.getVideoTracks()[0]
+      if (oldTrack) oldTrack.stop()
+
+      const newStream = await getMediaStream('video', nextFacingMode)
+      const newVideoTrack = newStream.getVideoTracks()[0]
+
+      if (oldTrack) localStreamRef.current.removeTrack(oldTrack)
+      if (newVideoTrack) localStreamRef.current.addTrack(newVideoTrack)
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = localStreamRef.current
+      }
+
+      if (peerConnectionRef.current) {
+        const sender = peerConnectionRef.current.getSenders().find(s => s.track && s.track.kind === 'video')
+        if (sender && newVideoTrack) {
+          await sender.replaceTrack(newVideoTrack)
+        }
+      }
+    } catch (err) {
+      console.error('Error flipping camera:', err)
+      alert('Could not switch camera. Device might not support back camera or permission blocked.')
+    }
+  }
+
   // Start WebRTC Call
   const startCall = async (type) => {
     if (!socket || !roomId) return
@@ -367,10 +442,7 @@ function App() {
     setCallState('outgoing')
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: type === 'video',
-        audio: true
-      })
+      const stream = await getMediaStream(type, 'user')
       localStreamRef.current = stream
       if (localVideoRef.current) localVideoRef.current.srcObject = stream
 
@@ -386,7 +458,8 @@ function App() {
       })
     } catch (err) {
       console.error('Error starting WebRTC call:', err)
-      setCallState(null)
+      alert('Could not access camera/microphone. Please verify permissions.')
+      cleanupCall()
     }
   }
 
@@ -396,10 +469,7 @@ function App() {
     setCallState('connected')
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: callType === 'video',
-        audio: true
-      })
+      const stream = await getMediaStream(callType, 'user')
       localStreamRef.current = stream
       if (localVideoRef.current) localVideoRef.current.srcObject = stream
 
@@ -1956,51 +2026,82 @@ function App() {
             </div>
           )}
 
-          {/* WebRTC Peer-to-Peer Live Video & Audio Calling Overlay */}
+          {/* Full-Screen WhatsApp-Style Video & Audio Call Overlay */}
           {callState && (
             <div style={{
-              position: 'absolute',
+              position: 'fixed',
               top: 0,
               left: 0,
               right: 0,
               bottom: 0,
-              backgroundColor: '#051312',
-              zIndex: 9999,
+              backgroundColor: '#030d0c',
+              zIndex: 99999,
               display: 'flex',
               flexDirection: 'column',
-              alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '40px 20px 30px 20px',
-              color: '#e9edef'
+              padding: '24px 16px',
+              color: '#e9edef',
+              animation: 'fadeIn 0.2s ease-in-out'
             }}>
-              <div style={{ textAlign: 'center', marginTop: '20px' }}>
-                <div style={{ fontSize: '13px', color: '#8696a0', marginBottom: '8px' }}>
-                  🔒 AURA Encrypted {callType.toUpperCase()} CALL
+              {/* Top Calling Status Header */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                zIndex: 30,
+                backgroundColor: 'rgba(0,0,0,0.4)',
+                padding: '10px 16px',
+                borderRadius: '20px',
+                backdropFilter: 'blur(10px)'
+              }}>
+                <div>
+                  <div style={{ fontSize: '12px', color: theme.primary, fontWeight: 'bold', letterSpacing: '1px' }}>
+                    🔒 END-TO-END ENCRYPTED {callType.toUpperCase()} CALL
+                  </div>
+                  <h2 style={{ margin: '2px 0 0 0', fontSize: '20px', fontWeight: 'bold', color: '#ffffff' }}>
+                    {otherUserName}
+                  </h2>
+                  <div style={{ fontSize: '12px', color: '#aebac1' }}>
+                    {callState === 'outgoing' && 'Ringing...'}
+                    {callState === 'incoming' && 'Incoming Call...'}
+                    {callState === 'connected' && `🟢 Live • ${formatCallDuration(callDuration)}`}
+                  </div>
                 </div>
-                <h2 style={{ margin: '0 0 6px 0', fontSize: '24px', fontWeight: 'bold' }}>
-                  {otherUserName}
-                </h2>
-                <div style={{ fontSize: '14px', color: theme.primary, fontWeight: '600' }}>
-                  {callState === 'outgoing' && 'Calling...'}
-                  {callState === 'incoming' && 'Incoming Live Call...'}
-                  {callState === 'connected' && `AURA Live Stream • ${formatCallDuration(callDuration)}`}
-                </div>
+
+                {callType === 'video' && callState === 'connected' && (
+                  <button
+                    onClick={() => setShowFilterPicker(!showFilterPicker)}
+                    style={{
+                      backgroundColor: showFilterPicker ? theme.primary : 'rgba(255,255,255,0.15)',
+                      color: showFilterPicker ? '#051312' : '#ffffff',
+                      border: `1px solid ${theme.primary}66`,
+                      borderRadius: '20px',
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      backdropFilter: 'blur(4px)'
+                    }}
+                  >
+                    ✨ Filters
+                  </button>
+                )}
               </div>
 
+              {/* Live Video View Container */}
               <div style={{
-                position: 'relative',
-                width: '100%',
-                maxHeight: '320px',
-                height: '60%',
-                borderRadius: '24px',
-                backgroundColor: '#071816',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
                 overflow: 'hidden',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                border: `1px solid ${theme.primary}33`,
-                boxShadow: `0 0 40px ${theme.primary}22`
+                backgroundColor: '#020908'
               }}>
+                {/* Remote Video Stream */}
                 <video
                   ref={remoteVideoRef}
                   autoPlay
@@ -2009,10 +2110,12 @@ function App() {
                     width: '100%',
                     height: '100%',
                     objectFit: 'cover',
+                    filter: videoFilterStyles[activeVideoFilter] || 'none',
                     display: (callType === 'video' && callState === 'connected') ? 'block' : 'none'
                   }}
                 />
 
+                {/* PIP Picture-in-Picture Local Video Stream */}
                 <video
                   ref={localVideoRef}
                   autoPlay
@@ -2020,78 +2123,141 @@ function App() {
                   muted
                   style={{
                     position: 'absolute',
-                    bottom: '12px',
-                    right: '12px',
-                    width: '90px',
-                    height: '130px',
+                    top: '90px',
+                    right: '16px',
+                    width: '110px',
+                    height: '160px',
                     objectFit: 'cover',
-                    borderRadius: '12px',
+                    borderRadius: '16px',
                     border: `2px solid ${theme.primary}`,
-                    boxShadow: '0 4px 14px rgba(0,0,0,0.6)',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.8)',
+                    filter: videoFilterStyles[activeVideoFilter] || 'none',
                     display: (callType === 'video' && !isVideoMuted && (callState === 'connected' || callState === 'outgoing')) ? 'block' : 'none',
-                    zIndex: 20
+                    zIndex: 25,
+                    transform: facingMode === 'user' ? 'scaleX(-1)' : 'none'
                   }}
                 />
 
+                {/* Avatar Display when Camera Muted or Audio Call */}
                 {(callType !== 'video' || isVideoMuted || callState === 'incoming') && (
-                  <div style={{ textAlign: 'center' }}>
+                  <div style={{ textAlign: 'center', zIndex: 10 }}>
                     <div style={{
-                      width: '100px',
-                      height: '100px',
+                      width: '120px',
+                      height: '120px',
                       borderRadius: '50%',
                       backgroundColor: theme.primary,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '48px',
-                      margin: '0 auto 16px auto',
+                      fontSize: '56px',
+                      margin: '0 auto 20px auto',
                       color: '#051312',
-                      boxShadow: `0 0 30px ${theme.primary}88`
+                      boxShadow: `0 0 40px ${theme.primary}88`
                     }}>
                       {otherUserName.charAt(0).toUpperCase()}
                     </div>
-                    <div style={{ fontSize: '13px', color: '#8696a0' }}>
-                      {callType === 'video' ? 'Camera Muted' : 'AURA WebRTC Audio Stream'}
+                    <div style={{ fontSize: '15px', color: '#aebac1', fontWeight: '500' }}>
+                      {callType === 'video' ? 'Camera Muted' : 'AURA HD Audio Connection'}
                     </div>
                   </div>
                 )}
               </div>
 
-              {callState === 'incoming' ? (
-                <div style={{ display: 'flex', gap: '40px', marginBottom: '20px' }}>
-                  <button onClick={rejectCall} style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#f15c6b', color: 'white', border: 'none', fontSize: '24px', cursor: 'pointer', boxShadow: '0 4px 16px rgba(241, 92, 107, 0.4)' }}>
-                    📞
-                  </button>
-                  <button onClick={acceptCall} style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: theme.primary, color: '#051312', border: 'none', fontSize: '24px', cursor: 'pointer', boxShadow: `0 4px 16px ${theme.primary}66` }}>
-                    📞
-                  </button>
-                </div>
-              ) : (
+              {/* Video Filter Picker Overlay */}
+              {showFilterPicker && callType === 'video' && (
                 <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '20px',
-                  backgroundColor: theme.header,
-                  padding: '12px 24px',
-                  borderRadius: '30px',
-                  marginBottom: '10px',
-                  border: `1px solid ${theme.primary}33`
+                  position: 'absolute',
+                  bottom: '110px',
+                  left: '16px',
+                  right: '16px',
+                  backgroundColor: 'rgba(5, 19, 18, 0.92)',
+                  border: `1px solid ${theme.primary}66`,
+                  borderRadius: '16px',
+                  padding: '12px',
+                  zIndex: 50,
+                  backdropFilter: 'blur(16px)',
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.8)'
                 }}>
-                  <button onClick={toggleMicMute} style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: isMicMuted ? '#f15c6b' : 'rgba(255,255,255,0.1)', color: 'white', border: 'none', fontSize: '20px', cursor: 'pointer' }}>
-                    {isMicMuted ? '🔇' : '🎙️'}
-                  </button>
-
-                  {callType === 'video' && (
-                    <button onClick={toggleVideoMute} style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: isVideoMuted ? '#f15c6b' : 'rgba(255,255,255,0.1)', color: 'white', border: 'none', fontSize: '20px', cursor: 'pointer' }}>
-                      {isVideoMuted ? '🚫' : '📹'}
-                    </button>
-                  )}
-
-                  <button onClick={endCall} style={{ width: '56px', height: '56px', borderRadius: '50%', backgroundColor: '#f15c6b', color: 'white', border: 'none', fontSize: '22px', cursor: 'pointer', boxShadow: '0 4px 16px rgba(241, 92, 107, 0.4)' }}>
-                    📞
-                  </button>
+                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: theme.primary, marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>🎨 LIVE VIDEO FILTERS</span>
+                    <button onClick={() => setShowFilterPicker(false)} style={{ background: 'none', border: 'none', color: '#8696a0', cursor: 'pointer' }}>✕</button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                    {videoFilterLabels.map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => {
+                          setActiveVideoFilter(f.id)
+                          setShowFilterPicker(false)
+                        }}
+                        style={{
+                          backgroundColor: activeVideoFilter === f.id ? theme.primary : 'rgba(255,255,255,0.08)',
+                          color: activeVideoFilter === f.id ? '#051312' : '#e9edef',
+                          border: activeVideoFilter === f.id ? 'none' : '1px solid rgba(255,255,255,0.15)',
+                          borderRadius: '12px',
+                          padding: '8px 12px',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                          whiteSpace: 'nowrap',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
+
+              {/* Bottom Control Bar */}
+              <div style={{ zIndex: 30, display: 'flex', justifyContent: 'center' }}>
+                {callState === 'incoming' ? (
+                  <div style={{ display: 'flex', gap: '40px', marginBottom: '20px' }}>
+                    <button onClick={rejectCall} style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#f15c6b', color: 'white', border: 'none', fontSize: '24px', cursor: 'pointer', boxShadow: '0 4px 16px rgba(241, 92, 107, 0.4)' }}>
+                      📞
+                    </button>
+                    <button onClick={acceptCall} style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: theme.primary, color: '#051312', border: 'none', fontSize: '24px', cursor: 'pointer', boxShadow: `0 4px 16px ${theme.primary}66` }}>
+                      📞
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    backgroundColor: 'rgba(8, 29, 26, 0.85)',
+                    padding: '12px 20px',
+                    borderRadius: '32px',
+                    backdropFilter: 'blur(16px)',
+                    border: `1px solid ${theme.primary}44`,
+                    boxShadow: '0 8px 30px rgba(0,0,0,0.6)'
+                  }}>
+                    {/* Mute Mic */}
+                    <button onClick={toggleMicMute} title="Toggle Microphone" style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: isMicMuted ? '#f15c6b' : 'rgba(255,255,255,0.12)', color: 'white', border: 'none', fontSize: '20px', cursor: 'pointer' }}>
+                      {isMicMuted ? '🔇' : '🎙️'}
+                    </button>
+
+                    {/* Toggle Video */}
+                    {callType === 'video' && (
+                      <button onClick={toggleVideoMute} title="Toggle Camera" style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: isVideoMuted ? '#f15c6b' : 'rgba(255,255,255,0.12)', color: 'white', border: 'none', fontSize: '20px', cursor: 'pointer' }}>
+                        {isVideoMuted ? '🚫' : '📹'}
+                      </button>
+                    )}
+
+                    {/* Flip Camera (Front / Back) */}
+                    {callType === 'video' && !isVideoMuted && (
+                      <button onClick={toggleCameraFacingMode} title="Flip Camera (Front / Back)" style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.12)', color: theme.primary, border: 'none', fontSize: '20px', cursor: 'pointer' }}>
+                        🔄
+                      </button>
+                    )}
+
+                    {/* End Call */}
+                    <button onClick={endCall} title="End Call" style={{ width: '56px', height: '56px', borderRadius: '50%', backgroundColor: '#f15c6b', color: 'white', border: 'none', fontSize: '22px', cursor: 'pointer', boxShadow: '0 4px 16px rgba(241, 92, 107, 0.5)' }}>
+                      📞
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         {/* Full-Screen WhatsApp-Style Image Preview & Download Modal */}
