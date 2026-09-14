@@ -605,6 +605,7 @@ function App() {
     const file = e.target.files[0]
     if (!file || !socket || !isJoined) return
 
+    const isVideo = file.type.startsWith('video/')
     const reader = new FileReader()
     reader.onload = () => {
       const msgId = Date.now() + Math.random().toString(36).substring(2, 5)
@@ -612,7 +613,7 @@ function App() {
       const msgObj = {
         id: msgId,
         roomId,
-        type: 'image',
+        type: isVideo ? 'video' : 'image',
         mediaUrl: reader.result,
         fileName: file.name,
         text: '',
@@ -1348,6 +1349,82 @@ function App() {
                             </div>
                           )}
                         </div>
+                      ) : msg.type === 'video' ? (
+                        <div style={{ position: 'relative', maxWidth: '280px' }}>
+                          <div
+                            onClick={() => setSelectedPreviewImage(msg)}
+                            style={{
+                              position: 'relative',
+                              borderRadius: '12px',
+                              overflow: 'hidden',
+                              cursor: 'pointer',
+                              border: `1px solid ${theme.primary}33`,
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                              backgroundColor: '#000000'
+                            }}
+                          >
+                            <video
+                              src={msg.mediaUrl}
+                              style={{
+                                width: '100%',
+                                maxHeight: '260px',
+                                objectFit: 'cover',
+                                display: 'block'
+                              }}
+                            />
+                            <div style={{
+                              position: 'absolute',
+                              top: '50%',
+                              left: '50%',
+                              transform: 'translate(-50%, -50%)',
+                              width: '44px',
+                              height: '44px',
+                              borderRadius: '50%',
+                              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                              border: `2px solid ${theme.primary}`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '20px',
+                              color: theme.primary,
+                              pointerEvents: 'none'
+                            }}>
+                              ▶
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                downloadImage(msg.mediaUrl, msg.fileName || 'aura_video.mp4')
+                              }}
+                              title="Download Video"
+                              style={{
+                                position: 'absolute',
+                                top: '8px',
+                                right: '8px',
+                                backgroundColor: 'rgba(0, 0, 0, 0.65)',
+                                color: theme.primary,
+                                border: `1px solid ${theme.primary}66`,
+                                borderRadius: '50%',
+                                width: '32px',
+                                height: '32px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '14px',
+                                cursor: 'pointer',
+                                backdropFilter: 'blur(4px)',
+                                zIndex: 5
+                              }}
+                            >
+                              ⬇️
+                            </button>
+                          </div>
+                          {msg.text && !msg.text.includes('.mp4') && !msg.text.includes('.webm') && (
+                            <div style={{ fontSize: '13px', marginTop: '4px', padding: '0 2px', color: theme.text }}>
+                              {msg.text}
+                            </div>
+                          )}
+                        </div>
                       ) : msg.type === 'voice' ? (
                         /* REAL Playable HTML5 Audio Voice Note */
                         <div style={{ minWidth: '200px', padding: '4px 0' }}>
@@ -1578,7 +1655,7 @@ function App() {
                 </div>
               )}
 
-              <input type="file" ref={fileInputRef} accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
+              <input type="file" ref={fileInputRef} accept="image/*,video/*" onChange={handleImageUpload} style={{ display: 'none' }} />
 
               {/* Bottom Input Bar with REAL MediaRecorder Audio Recording Controls */}
               <div style={{
@@ -2045,7 +2122,7 @@ function App() {
             }}>
               <div>
                 <div style={{ fontSize: '14px', fontWeight: 'bold', color: theme.primary }}>
-                  📷 {selectedPreviewImage.senderName || 'Photo'}
+                  {selectedPreviewImage.type === 'video' ? '🎥 Video' : '📷 Photo'} • {selectedPreviewImage.senderName || 'Media'}
                 </div>
                 <div style={{ fontSize: '11px', color: '#aebac1' }}>
                   {selectedPreviewImage.time}
@@ -2054,7 +2131,10 @@ function App() {
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <button
-                  onClick={() => downloadImage(selectedPreviewImage.mediaUrl, selectedPreviewImage.fileName || 'aura_photo.png')}
+                  onClick={() => downloadImage(
+                    selectedPreviewImage.mediaUrl,
+                    selectedPreviewImage.fileName || (selectedPreviewImage.type === 'video' ? 'aura_video.mp4' : 'aura_photo.png')
+                  )}
                   style={{
                     backgroundColor: theme.primary,
                     color: '#051312',
@@ -2090,7 +2170,7 @@ function App() {
               </div>
             </div>
 
-            {/* Centered Large Image */}
+            {/* Centered Large Media (Image or Video) */}
             <div style={{
               flex: 1,
               display: 'flex',
@@ -2099,23 +2179,40 @@ function App() {
               padding: '12px 0',
               overflow: 'hidden'
             }}>
-              <img
-                src={selectedPreviewImage.mediaUrl}
-                alt="Full Preview"
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '76vh',
-                  objectFit: 'contain',
-                  borderRadius: '12px',
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)'
-                }}
-              />
+              {selectedPreviewImage.type === 'video' ? (
+                <video
+                  src={selectedPreviewImage.mediaUrl}
+                  controls
+                  autoPlay
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '76vh',
+                    borderRadius: '12px',
+                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)'
+                  }}
+                />
+              ) : (
+                <img
+                  src={selectedPreviewImage.mediaUrl}
+                  alt="Full Preview"
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '76vh',
+                    objectFit: 'contain',
+                    borderRadius: '12px',
+                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)'
+                  }}
+                />
+              )}
             </div>
 
             {/* Bottom Download Bar */}
             <div style={{ textAlign: 'center', paddingBottom: '10px' }}>
               <button
-                onClick={() => downloadImage(selectedPreviewImage.mediaUrl, selectedPreviewImage.fileName || 'aura_photo.png')}
+                onClick={() => downloadImage(
+                  selectedPreviewImage.mediaUrl,
+                  selectedPreviewImage.fileName || (selectedPreviewImage.type === 'video' ? 'aura_video.mp4' : 'aura_photo.png')
+                )}
                 style={{
                   width: '100%',
                   maxWidth: '300px',
@@ -2130,7 +2227,7 @@ function App() {
                   boxShadow: `0 4px 18px ${theme.primary}55`
                 }}
               >
-                📥 Download Image to Device
+                📥 Download {selectedPreviewImage.type === 'video' ? 'Video' : 'Image'} to Device
               </button>
             </div>
           </div>
