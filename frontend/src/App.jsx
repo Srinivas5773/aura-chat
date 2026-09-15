@@ -1360,6 +1360,35 @@ function App() {
                 >
                   🔑 Join Existing Room Code
                 </button>
+
+                <a
+                  href="https://github.com/Srinivas5773/aura-chat/releases/download/v1.0.0/AURA-v1.0.apk"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    width: '100%',
+                    maxWidth: '280px',
+                    padding: '12px',
+                    backgroundColor: 'rgba(0, 245, 196, 0.08)',
+                    color: theme.primary,
+                    border: `1px dashed ${theme.primary}88`,
+                    borderRadius: '25px',
+                    fontSize: '13px',
+                    fontWeight: 'bold',
+                    textDecoration: 'none',
+                    textAlign: 'center',
+                    marginTop: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.3)'
+                  }}
+                >
+                  <span>📲</span>
+                  <span>Download Android APK</span>
+                </a>
               </div>
 
               <div style={{

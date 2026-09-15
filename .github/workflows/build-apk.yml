@@ -1,0 +1,88 @@
+﻿name: Build & Release Android APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build AURA Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Frontend Dependencies & Build Web App
+        run: |
+          cd frontend
+          npm install
+          npm run build
+          npx cap sync android
+
+      - name: Build Android APK with Gradle
+        run: |
+          cd frontend/android
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+          cd ../..
+          cp frontend/android/app/build/outputs/apk/debug/app-debug.apk ./AURA-v1.0.apk
+
+      - name: Upload APK as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AURA-Android-APK
+          path: ./AURA-v1.0.apk
+          retention-days: 30
+
+      - name: Publish GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: v1.0.0
+          name: "AURA Android App v1.0.0"
+          body: |
+            ## 📱 AURA Official Android APK (v1.0.0)
+
+            Tap **AURA-v1.0.apk** below to download and install directly on any Android smartphone.
+
+            ### ✨ Key Features Included:
+            - 🔒 **End-to-End Encrypted HD Video & Audio Calling** (Front & Back camera flip).
+            - 🎨 **Live Video Filters** (AURA Glow, Retro Warm, Stealth B&W, Cyberpunk, Soft Beauty).
+            - 🎙️ **Voice Notes** with live audio recording.
+            - 📸 **WhatsApp-Style Media Cards** with 1-click photo & video downloader.
+            - 🖌️ **Live Collaborative Whiteboard Canvas** with touch drawing.
+            - 👻 **Stealth Features**: Ghost Mode, Self-Destruct Messages (Auto-burn), and Blur Mode.
+            - 🎨 **Multi-Theme Support**: AURA, WhatsApp, Cyberpunk, and Stealth.
+
+            ### 📲 How to Install on Android:
+            1. Download `AURA-v1.0.apk`.
+            2. Tap the downloaded file in your browser/notifications.
+            3. If prompted with *"Install unknown apps"*, tap **Settings** -> **Allow from this source**.
+            4. Tap **Install** and open **AURA**!
+          files: |
+            ./AURA-v1.0.apk
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
