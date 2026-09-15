@@ -901,41 +901,32 @@ function App() {
     audioChunksRef.current = []
   }
 
-  const handleCreateRoom = () => {
-    if (!socket) return
+  // Auto-fill Room Code from URL query parameters (e.g. ?room=ctrvu4)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const roomFromUrl = params.get('room')
+    if (roomFromUrl && roomFromUrl.trim()) {
+      const cleanRoom = roomFromUrl.trim()
+      setRoomId(cleanRoom)
+    }
+  }, [])
+
+  const handleJoinRoomWithCode = (customCode) => {
+    const targetCode = (customCode || roomId || '').trim() || Math.random().toString(36).substring(2, 8)
     const nameToUse = userName.trim() || 'User'
     setUserName(nameToUse)
+    setRoomId(targetCode)
+    setIsJoined(true)
     setRoomError('')
+    window.history.pushState({}, '', `?room=${targetCode}`)
+    if (socket) {
+      socket.emit('join_room', { roomId: targetCode, userName: nameToUse })
+    }
+  }
+
+  const handleCreateRandomRoom = () => {
     const newRoomId = Math.random().toString(36).substring(2, 8)
-    setRoomId(newRoomId)
-    setIsJoined(true)
-    window.history.pushState({}, '', `?room=${newRoomId}`)
-    socket.emit('join_room', { roomId: newRoomId, userName: nameToUse })
-  }
-
-  const handleJoinRoom = () => {
-    if (!socket) return
-    const nameToUse = userName.trim() || 'User'
-    setUserName(nameToUse)
-    setRoomError('')
-    const inputRoomId = prompt('Enter Room ID Code (or leave blank for public room "aura"):')
-    const targetRoomId = (inputRoomId && inputRoomId.trim()) ? inputRoomId.trim() : 'aura'
-    setRoomId(targetRoomId)
-    setIsJoined(true)
-    window.history.pushState({}, '', `?room=${targetRoomId}`)
-    socket.emit('join_room', { roomId: targetRoomId, userName: nameToUse })
-  }
-
-  const handleJoinPublicRoom = () => {
-    if (!socket) return
-    const nameToUse = userName.trim() || 'User'
-    setUserName(nameToUse)
-    setRoomError('')
-    const targetRoomId = 'aura'
-    setRoomId(targetRoomId)
-    setIsJoined(true)
-    window.history.pushState({}, '', `?room=${targetRoomId}`)
-    socket.emit('join_room', { roomId: targetRoomId, userName: nameToUse })
+    handleJoinRoomWithCode(newRoomId)
   }
 
   const handleLeaveRoom = () => {
@@ -1328,11 +1319,12 @@ function App() {
                   </div>
                 )}
 
+                {/* Your Name Input */}
                 <input
                   type="text"
                   value={userName}
                   onChange={(e) => setUserName(e.target.value)}
-                  placeholder="Enter Your Name"
+                  placeholder="👤 Your Display Name (e.g. Teja)"
                   style={{
                     width: '100%',
                     maxWidth: '280px',
@@ -1344,13 +1336,36 @@ function App() {
                     fontSize: '14px',
                     outline: 'none',
                     textAlign: 'center',
+                    marginBottom: '10px',
+                    boxShadow: 'inset 0 0 10px rgba(0, 245, 196, 0.1)'
+                  }}
+                />
+
+                {/* Room Code Input */}
+                <input
+                  type="text"
+                  value={roomId}
+                  onChange={(e) => setRoomId(e.target.value.toLowerCase())}
+                  placeholder="🔑 Enter Room Code (e.g. ctrvu4)"
+                  style={{
+                    width: '100%',
+                    maxWidth: '280px',
+                    padding: '12px 16px',
+                    backgroundColor: 'rgba(0, 245, 196, 0.05)',
+                    color: theme.primary,
+                    border: `1px solid ${theme.primary}`,
+                    borderRadius: '25px',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    outline: 'none',
+                    textAlign: 'center',
                     marginBottom: '14px',
                     boxShadow: 'inset 0 0 10px rgba(0, 245, 196, 0.1)'
                   }}
                 />
 
                 <button
-                  onClick={handleCreateRoom}
+                  onClick={() => handleJoinRoomWithCode()}
                   style={{
                     width: '100%',
                     maxWidth: '280px',
@@ -1366,25 +1381,25 @@ function App() {
                     boxShadow: `0 4px 18px ${theme.primary}55`
                   }}
                 >
-                  ✨ Create AURA Room
+                  🚀 Enter Room
                 </button>
 
                 <button
-                  onClick={handleJoinRoom}
+                  onClick={handleCreateRandomRoom}
                   style={{
                     width: '100%',
                     maxWidth: '280px',
-                    padding: '14px',
+                    padding: '12px',
                     backgroundColor: theme.header,
                     color: theme.primary,
-                    border: `1px solid ${theme.primary}`,
+                    border: `1px solid ${theme.primary}aa`,
                     borderRadius: '25px',
-                    fontSize: '15px',
+                    fontSize: '13px',
                     fontWeight: 'bold',
                     cursor: 'pointer'
                   }}
                 >
-                  🔑 Join Existing Room Code
+                  🎲 Create New Random Room
                 </button>
 
                 <a
