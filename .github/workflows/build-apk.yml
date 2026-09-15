@@ -1,4 +1,4 @@
-name: Build & Release Android APK
+﻿name: Build & Release Android APK
 
 on:
   push:
@@ -29,20 +29,13 @@ jobs:
         with:
           node-version: 20
 
-      - name: Make Gradlew Executable
-        run: chmod +x frontend/android/gradlew
-
-      - name: Install Frontend Dependencies
+      - name: Build Web App & Bundle Assets
         working-directory: frontend
-        run: npm install --legacy-peer-deps
-
-      - name: Build Web Assets
-        working-directory: frontend
-        run: npm run build
-
-      - name: Sync Capacitor Android
-        working-directory: frontend
-        run: npx @capacitor/cli sync android
+        run: |
+          npm install --legacy-peer-deps
+          npm run build
+          mkdir -p android/app/src/main/assets/public
+          cp -r dist/* android/app/src/main/assets/public/
 
       - name: Build Android APK with Gradle
         run: |
