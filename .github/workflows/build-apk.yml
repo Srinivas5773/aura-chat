@@ -29,6 +29,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Make Gradlew Executable
+        run: chmod +x frontend/android/gradlew
+
       - name: Install Frontend Dependencies
         working-directory: frontend
         run: npm install --legacy-peer-deps
@@ -39,7 +42,7 @@ jobs:
 
       - name: Sync Capacitor Android
         working-directory: frontend
-        run: npm run sync
+        run: npx @capacitor/cli sync android
 
       - name: Build Android APK with Gradle
         run: |
