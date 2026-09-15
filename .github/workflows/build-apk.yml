@@ -33,6 +33,7 @@ jobs:
         working-directory: frontend
         run: |
           npm install --legacy-peer-deps
+          sed -i 's/8.13.0/8.7.3/g' node_modules/@capacitor/android/capacitor/build.gradle || true
           npm run build
           mkdir -p android/app/src/main/assets/public
           cp -r dist/* android/app/src/main/assets/public/
