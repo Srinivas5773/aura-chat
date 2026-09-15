@@ -34,7 +34,6 @@ jobs:
         run: |
           npm install --legacy-peer-deps
           npm run build
-          npx @capacitor/cli update android
           mkdir -p android/app/src/main/assets/public
           cp -r dist/* android/app/src/main/assets/public/
 
