@@ -244,6 +244,7 @@ function App() {
   const canvasRef = useRef(null)
   const isDrawingRef = useRef(false)
   const lastPosRef = useRef({ x: 0, y: 0 })
+  const canvasStrokesRef = useRef([])
   const [brushColor, setBrushColor] = useState('#00f5c4')
   const [brushSize, setBrushSize] = useState(4)
 
@@ -324,6 +325,30 @@ function App() {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages.length])
+
+  // Initialize Canvas & replay stroke history when canvas modal opens
+  useEffect(() => {
+    if (showCanvasModal) {
+      const timer = setTimeout(() => {
+        const canvas = canvasRef.current
+        if (!canvas) return
+        const ctx = canvas.getContext('2d')
+        ctx.fillStyle = '#071816'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+        canvasStrokesRef.current.forEach(stroke => {
+          ctx.strokeStyle = stroke.color
+          ctx.lineWidth = stroke.size
+          ctx.lineCap = 'round'
+          ctx.beginPath()
+          ctx.moveTo(stroke.x0, stroke.y0)
+          ctx.lineTo(stroke.x1, stroke.y1)
+          ctx.stroke()
+        })
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [showCanvasModal])
 
   // Call Timer Increment & Ringtone Audio Control
   useEffect(() => {
@@ -488,6 +513,7 @@ function App() {
     })
 
     newSocket.on('canvas_drawn', ({ strokeData }) => {
+      canvasStrokesRef.current.push(strokeData)
       const canvas = canvasRef.current
       if (!canvas) return
       const ctx = canvas.getContext('2d')
@@ -501,10 +527,12 @@ function App() {
     })
 
     newSocket.on('canvas_cleared', () => {
+      canvasStrokesRef.current = []
       const canvas = canvasRef.current
       if (!canvas) return
       const ctx = canvas.getContext('2d')
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.fillStyle = '#071816'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
     })
 
     // WebRTC Signaling Events
@@ -985,41 +1013,69 @@ function App() {
     socket.emit('vote_poll', { roomId, messageId: msgId, optionIndex, userName: userName || 'You' })
   }
 
-  // Collaborative Drawing Canvas Controls
-  const startDrawing = (e) => {
+  // Collaborative Drawing Canvas Controls (Universal Touch & Mouse Support)
+  const getCanvasCoordinates = (e) => {
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!canvas) return null
     const rect = canvas.getBoundingClientRect()
-    isDrawingRef.current = true
-    lastPosRef.current = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+    let clientX, clientY
+    if (e.touches && e.touches.length > 0) {
+      clientX = e.touches[0].clientX
+      clientY = e.touches[0].clientY
+    } else if (e.changedTouches && e.changedTouches.length > 0) {
+      clientX = e.changedTouches[0].clientX
+      clientY = e.changedTouches[0].clientY
+    } else {
+      clientX = e.clientX
+      clientY = e.clientY
     }
+    if (clientX === undefined || clientY === undefined) return null
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    }
+  }
+
+  const startDrawing = (e) => {
+    const coords = getCanvasCoordinates(e)
+    if (!coords) return
+    isDrawingRef.current = true
+    lastPosRef.current = coords
   }
 
   const draw = (e) => {
     if (!isDrawingRef.current || !canvasRef.current) return
-    const canvas = canvasRef.current
-    const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    const ctx = canvas.getContext('2d')
+    if (e.cancelable) e.preventDefault()
+    const coords = getCanvasCoordinates(e)
+    if (!coords) return
 
-    ctx.strokeStyle = brushColor
-    ctx.lineWidth = brushSize
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    const strokeData = {
+      x0: lastPosRef.current.x,
+      y0: lastPosRef.current.y,
+      x1: coords.x,
+      y1: coords.y,
+      color: brushColor,
+      size: brushSize
+    }
+
+    ctx.strokeStyle = strokeData.color
+    ctx.lineWidth = strokeData.size
     ctx.lineCap = 'round'
     ctx.beginPath()
-    ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y)
-    ctx.lineTo(x, y)
+    ctx.moveTo(strokeData.x0, strokeData.y0)
+    ctx.lineTo(strokeData.x1, strokeData.y1)
     ctx.stroke()
 
+    canvasStrokesRef.current.push(strokeData)
+    lastPosRef.current = coords
+
     if (socket && roomId) {
-      socket.emit('draw_stroke', {
-        roomId,
-        strokeData: { x0: lastPosRef.current.x, y0: lastPosRef.current.y, x1: x, y1: y, color: brushColor, size: brushSize }
-      })
+      socket.emit('draw_stroke', { roomId, strokeData })
     }
-    lastPosRef.current = { x, y }
   }
 
   const stopDrawing = () => {
@@ -1030,7 +1086,9 @@ function App() {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.fillStyle = '#071816'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    canvasStrokesRef.current = []
     if (socket && roomId) socket.emit('clear_canvas', { roomId })
   }
 
@@ -2211,14 +2269,19 @@ function App() {
 
               <canvas
                 ref={canvasRef}
-                width={380}
+                width={400}
                 height={600}
                 onMouseDown={startDrawing}
                 onMouseMove={draw}
                 onMouseUp={stopDrawing}
                 onMouseLeave={stopDrawing}
+                onTouchStart={startDrawing}
+                onTouchMove={draw}
+                onTouchEnd={stopDrawing}
+                onTouchCancel={stopDrawing}
                 style={{
                   flex: 1,
+                  width: '100%',
                   backgroundColor: '#071816',
                   borderRadius: '12px',
                   border: `1px solid ${theme.primary}`,
