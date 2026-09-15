@@ -40,9 +40,10 @@ jobs:
 
       - name: Build Android APK with Gradle
         run: |
+          set -o pipefail
           cd frontend/android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee ../../gradle_build.log || (echo "=== GRADLE BUILD FAILED ===" && cat ../../gradle_build.log && exit 1)
+          ./gradlew assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee ../../gradle_build.log
           cd ../..
           cp frontend/android/app/build/outputs/apk/debug/app-debug.apk ./AURA-v1.0.apk
 
