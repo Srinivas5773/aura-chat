@@ -44,9 +44,10 @@ jobs:
           cd frontend/android
           chmod +x gradlew
           if ! ./gradlew assembleDebug --no-daemon --stacktrace --console=plain > ../../gradle_build.log 2>&1; then
-            echo "==================== GRADLE ERROR LOG ===================="
-            tail -n 150 ../../gradle_build.log
-            echo "=========================================================="
+            echo "## ❌ Gradle Build Error Log" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 120 ../../gradle_build.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
           cd ../..
@@ -58,16 +59,6 @@ jobs:
         with:
           name: gradle-build-log
           path: ./gradle_build.log
-
-      - name: Push Build Log to Debug Branch on Failure
-        if: failure()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -B debug-log
-          git add gradle_build.log
-          git commit -m "debug build log"
-          git push origin debug-log -f
 
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
