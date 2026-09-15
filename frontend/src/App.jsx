@@ -151,6 +151,8 @@ function App() {
   const [showScrollButtons, setShowScrollButtons] = useState(false)
   const [timeString, setTimeString] = useState('')
   const [partnerOnline, setPartnerOnline] = useState(false)
+  const [roomUserCount, setRoomUserCount] = useState(1)
+  const [isConnected, setIsConnected] = useState(true)
   const [roomError, setRoomError] = useState('')
 
   const userNameRef = useRef(userName)
@@ -429,6 +431,7 @@ function App() {
 
     newSocket.on('connect', () => {
       console.log('Socket connected:', newSocket.id)
+      setIsConnected(true)
       if (isJoinedRef.current && roomIdRef.current) {
         console.log(`Auto re-joining room ${roomIdRef.current} on reconnect`)
         newSocket.emit('join_room', {
@@ -436,6 +439,12 @@ function App() {
           userName: userNameRef.current || 'User'
         })
       }
+    })
+
+    newSocket.on('disconnect', () => {
+      console.log('Socket disconnected')
+      setIsConnected(false)
+      setPartnerOnline(false)
     })
 
     newSocket.on('room_history', (history) => {
@@ -448,20 +457,37 @@ function App() {
       }
     });
 
-    newSocket.on('user_joined', ({ users }) => {
-      if (users && users.length > 1) {
-        const partner = users.find(u => u.id !== newSocket.id)
-        if (partner) {
-          setOtherUserName(partner.name || 'Partner')
-          setPartnerOnline(true)
-        }
+    const handleRoomUsers = ({ users, userCount }) => {
+      const activeUsers = users || []
+      const currentCount = userCount || activeUsers.length
+      setRoomUserCount(currentCount)
+
+      const myId = newSocket.id
+      const partner = activeUsers.find(u => u.id !== myId)
+
+      if (partner) {
+        setOtherUserName(partner.name || 'Partner')
+        setPartnerOnline(true)
+      } else if (currentCount > 1) {
+        const fallbackPartner = activeUsers.find(u => u.name !== userNameRef.current)
+        if (fallbackPartner) setOtherUserName(fallbackPartner.name || 'Partner')
+        setPartnerOnline(true)
       } else {
         setPartnerOnline(false)
       }
-    })
+    }
 
-    newSocket.on('user_left', () => {
-      setPartnerOnline(false)
+    newSocket.on('user_joined', handleRoomUsers)
+    newSocket.on('room_users_updated', handleRoomUsers)
+
+    newSocket.on('user_left', ({ userCount, users }) => {
+      const count = userCount || (users ? users.length : 1)
+      setRoomUserCount(count)
+      if (count <= 1) {
+        setPartnerOnline(false)
+      } else if (users) {
+        handleRoomUsers({ users, userCount: count })
+      }
     })
 
     newSocket.on('receive_message', (msgObj) => {
@@ -1470,10 +1496,16 @@ function App() {
                         🏷️ {roomId} 📋
                       </span>
                     </div>
-                    <div style={{ color: otherUserTyping ? theme.primary : (partnerOnline ? '#00f5c4' : '#8696a0'), fontSize: '11px' }}>
+                    <div style={{ color: otherUserTyping ? theme.primary : (!isConnected ? '#ff4b4b' : (partnerOnline ? '#00f5c4' : '#eab308')), fontSize: '11px', fontWeight: '500' }}>
                       {otherUserTyping 
                         ? (ghostMode ? '👻 A ghost is typing...' : 'typing...') 
-                        : (ghostMode ? '👻 Ghost Mode' : (partnerOnline ? '🟢 Online' : '🔴 Offline'))}
+                        : (!isConnected 
+                            ? '⚠️ Disconnected - Reconnecting...' 
+                            : (ghostMode 
+                                ? '👻 Ghost Mode' 
+                                : (partnerOnline 
+                                    ? '🟢 Online' 
+                                    : '🟡 Waiting for partner to join...')))}
                     </div>
                   </div>
                 </div>

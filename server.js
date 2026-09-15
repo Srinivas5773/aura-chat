@@ -49,11 +49,14 @@ io.on('connection', (socket) => {
       rooms[roomId].users[existingIndex].name = userName || rooms[roomId].users[existingIndex].name;
     }
     
-    io.to(roomId).emit('user_joined', {
+    const roomData = {
       userCount: rooms[roomId].users.length,
       users: rooms[roomId].users,
       ghostMode: rooms[roomId].ghostMode
-    });
+    };
+
+    io.to(roomId).emit('user_joined', roomData);
+    io.to(roomId).emit('room_users_updated', roomData);
 
     // Send room message history to the newly connected/reconnected user
     socket.emit('room_history', rooms[roomId].messages);
@@ -176,7 +179,12 @@ io.on('connection', (socket) => {
         room.users.splice(userIndex, 1);
         socket.to(roomId).emit('user_left', { 
           userCount: room.users.length,
-          leftUser: disconnectedUser
+          leftUser: disconnectedUser,
+          users: room.users
+        });
+        socket.to(roomId).emit('room_users_updated', {
+          userCount: room.users.length,
+          users: room.users
         });
         
         if (room.users.length === 0) {
