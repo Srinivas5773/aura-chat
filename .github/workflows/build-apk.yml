@@ -18,11 +18,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Java 21
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '17'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -34,6 +34,7 @@ jobs:
         run: |
           npm install --legacy-peer-deps
           sed -i 's/8.13.0/8.7.3/g' node_modules/@capacitor/android/capacitor/build.gradle || true
+          sed -i 's/VERSION_21/VERSION_17/g' node_modules/@capacitor/android/capacitor/build.gradle || true
           npm run build
           mkdir -p android/app/src/main/assets/public
           cp -r dist/* android/app/src/main/assets/public/
