@@ -41,9 +41,16 @@ jobs:
         run: |
           cd frontend/android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee ../../gradle_build.log || (echo "=== GRADLE BUILD FAILED ===" && cat ../../gradle_build.log && exit 1)
           cd ../..
           cp frontend/android/app/build/outputs/apk/debug/app-debug.apk ./AURA-v1.0.apk
+
+      - name: Upload Build Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-log
+          path: ./gradle_build.log
 
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
