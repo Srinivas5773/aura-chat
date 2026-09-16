@@ -420,8 +420,15 @@ function App() {
 
   // Socket Setup & WebRTC Event Handlers
   useEffect(() => {
-    const socketUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-      ? 'http://localhost:5000' 
+    const isLocalHost = 
+      window.location.hostname === 'localhost' || 
+      window.location.hostname === '127.0.0.1' || 
+      window.location.hostname.startsWith('192.168.') || 
+      window.location.hostname.startsWith('10.') || 
+      window.location.hostname.endsWith('.local')
+
+    const socketUrl = isLocalHost
+      ? `http://${window.location.hostname}:5000`
       : 'https://aura-chat-oz1f.onrender.com'
 
     const newSocket = io(socketUrl, {
