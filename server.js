@@ -19,7 +19,8 @@ io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   
   socket.on('join_room', ({ roomId, userName }) => {
-    console.log(`Join room: ${roomId} by ${userName || 'Anonymous'} (${socket.id})`);
+    const cleanName = (userName && userName.trim()) ? userName.trim() : 'User';
+    console.log(`Join room: ${roomId} by ${cleanName} (${socket.id})`);
     
     if (!rooms[roomId]) {
       rooms[roomId] = {
@@ -33,23 +34,30 @@ io.on('connection', (socket) => {
     if (!rooms[roomId].messages) {
       rooms[roomId].messages = [];
     }
+
+    // Clean up stale disconnected sockets
+    rooms[roomId].users = rooms[roomId].users.filter(u => {
+      const s = io.sockets.sockets.get(u.id);
+      return s && s.connected;
+    });
+
+    // Check if user with same socket ID or same name exists
+    const existingIndex = rooms[roomId].users.findIndex(u => u.id === socket.id || u.name.toLowerCase() === cleanName.toLowerCase());
     
-    if (rooms[roomId].users.length >= 2 && !rooms[roomId].users.some(u => u.id === socket.id)) {
-      socket.emit('room_full');
-      return;
-    }
-    
-    socket.join(roomId);
-    
-    const existingIndex = rooms[roomId].users.findIndex(u => u.id === socket.id);
-    if (existingIndex === -1) {
-      rooms[roomId].users.push({ id: socket.id, name: userName || 'User', isOnline: true });
+    if (existingIndex !== -1) {
+      rooms[roomId].users[existingIndex] = { id: socket.id, name: cleanName, isOnline: true };
     } else {
-      rooms[roomId].users[existingIndex].isOnline = true;
-      rooms[roomId].users[existingIndex].name = userName || rooms[roomId].users[existingIndex].name;
+      if (rooms[roomId].users.length >= 10) {
+        socket.emit('room_full', { message: 'Room is full (max 10 users)' });
+        return;
+      }
+      rooms[roomId].users.push({ id: socket.id, name: cleanName, isOnline: true });
     }
-    
+
+    socket.join(roomId);
+
     const roomData = {
+      roomId,
       userCount: rooms[roomId].users.length,
       users: rooms[roomId].users,
       ghostMode: rooms[roomId].ghostMode
