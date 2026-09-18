@@ -420,12 +420,19 @@ function App() {
 
   // Socket Setup & WebRTC Event Handlers
   useEffect(() => {
-    const isLocalHost = 
+    const isCapacitorNative = Boolean(
+      (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) ||
+      (window.Capacitor && window.Capacitor.platform && window.Capacitor.platform !== 'web') ||
+      window.location.href.includes('capacitor://')
+    );
+
+    const isLocalHost = !isCapacitorNative && (
       window.location.hostname === 'localhost' || 
       window.location.hostname === '127.0.0.1' || 
       window.location.hostname.startsWith('192.168.') || 
       window.location.hostname.startsWith('10.') || 
       window.location.hostname.endsWith('.local')
+    );
 
     const socketUrl = isLocalHost
       ? `http://${window.location.hostname}:5000`
