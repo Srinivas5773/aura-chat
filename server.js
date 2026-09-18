@@ -148,6 +148,13 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('webrtc_ice_candidate', { candidate });
   });
 
+  socket.on('call_subtitle', (payload) => {
+    const { roomId } = payload;
+    if (roomId) {
+      socket.to(roomId).emit('call_subtitle', payload);
+    }
+  });
+
   socket.on('end_call', ({ roomId }) => {
     console.log(`WebRTC Call ended in room ${roomId}`);
     io.to(roomId).emit('call_ended');

@@ -12,6 +12,67 @@ const peerConfig = {
   ]
 }
 
+const TRANSLATION_LANGUAGES = [
+  { code: 'hi', name: 'Hindi (हिन्दी)' },
+  { code: 'te', name: 'Telugu (తెలుగు)' },
+  { code: 'ur', name: 'Urdu (اردو)' },
+  { code: 'de', name: 'German (Deutsch)' },
+  { code: 'en', name: 'English' },
+  { code: 'es', name: 'Spanish (Español)' },
+  { code: 'fr', name: 'French (Français)' },
+  { code: 'ar', name: 'Arabic (العربية)' },
+  { code: 'zh-CN', name: 'Chinese (中文)' },
+  { code: 'ja', name: 'Japanese (日本語)' },
+  { code: 'ru', name: 'Russian (Русский)' },
+  { code: 'pt', name: 'Portuguese (Português)' },
+  { code: 'it', name: 'Italian (Italiano)' },
+  { code: 'bn', name: 'Bengali (বাংলা)' },
+  { code: 'ta', name: 'Tamil (தமிழ்)' },
+  { code: 'kn', name: 'Kannada (ಕನ್ನಡ)' },
+  { code: 'mr', name: 'Marathi (मराठी)' },
+  { code: 'ml', name: 'Malayalam (മലയാളം)' },
+]
+
+const getSpeechLocale = (langCode) => {
+  const map = {
+    'hi': 'hi-IN',
+    'te': 'te-IN',
+    'ur': 'ur-PK',
+    'de': 'de-DE',
+    'en': 'en-US',
+    'es': 'es-ES',
+    'fr': 'fr-FR',
+    'ar': 'ar-SA',
+    'zh-CN': 'zh-CN',
+    'ja': 'ja-JP',
+    'ru': 'ru-RU',
+    'pt': 'pt-BR',
+    'it': 'it-IT',
+    'bn': 'bn-IN',
+    'ta': 'ta-IN',
+    'kn': 'kn-IN',
+    'mr': 'mr-IN',
+    'ml': 'ml-IN',
+  }
+  return map[langCode] || langCode
+}
+
+const translateTextFree = async (text, targetLang) => {
+  if (!text || !targetLang) return text
+  try {
+    const response = await fetch(
+      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`
+    )
+    const data = await response.json()
+    if (data && data[0]) {
+      return data[0].map(item => item[0]).join('')
+    }
+  } catch (err) {
+    console.error('Free Translation error:', err)
+  }
+  return text
+}
+
 // Web Audio API Call Ringtone & Sound Effects Synthesizer
 class CallRingtoneManager {
   constructor() {
@@ -222,6 +283,16 @@ function App() {
   const [activeVideoFilter, setActiveVideoFilter] = useState('none')
   const [showFilterPicker, setShowFilterPicker] = useState(false)
 
+  // Live Call Voice Translator & Subtitle States
+  const [isSubtitlesEnabled, setIsSubtitlesEnabled] = useState(false)
+  const [mySpokenLanguage, setMySpokenLanguage] = useState('hi')
+  const [myTargetLanguage, setMyTargetLanguage] = useState('en')
+  const [showLanguagePicker, setShowLanguagePicker] = useState(false)
+  const [activeSubtitlePayload, setActiveSubtitlePayload] = useState(null)
+
+  const speechRecognizerRef = useRef(null)
+  const subtitleTimerRef = useRef(null)
+
   const videoFilterStyles = {
     none: 'none',
     aura: 'drop-shadow(0 0 15px #00f5c4) contrast(1.15) saturate(1.2)',
@@ -395,6 +466,92 @@ function App() {
     }
   }, [callState])
 
+  // Real-Time Speech Recognition & Free Translation Effect for Live Call Subtitles
+  useEffect(() => {
+    let recognition = null
+    let isComponentMounted = true
+
+    if (isSubtitlesEnabled && callState === 'connected') {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+      if (!SpeechRecognition) {
+        alert('Live Speech Recognition is not supported by your browser or device.')
+        setIsSubtitlesEnabled(false)
+        return
+      }
+
+      try {
+        recognition = new SpeechRecognition()
+        recognition.continuous = true
+        recognition.interimResults = true
+        recognition.lang = getSpeechLocale(mySpokenLanguage)
+
+        recognition.onresult = async (event) => {
+          let finalTranscript = ''
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript
+            }
+          }
+
+          const spokenText = finalTranscript.trim()
+          if (spokenText) {
+            const translated = await translateTextFree(spokenText, myTargetLanguage)
+            const payload = {
+              roomId,
+              senderName: userName || 'Partner',
+              originalText: spokenText,
+              translatedText: translated,
+              targetLang: myTargetLanguage
+            }
+
+            if (socket) {
+              socket.emit('call_subtitle', payload)
+            }
+
+            setActiveSubtitlePayload({
+              senderName: userName || 'You',
+              originalText: spokenText,
+              translatedText: translated,
+              isMine: true
+            })
+
+            if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current)
+            subtitleTimerRef.current = setTimeout(() => {
+              if (isComponentMounted) setActiveSubtitlePayload(null)
+            }, 6000)
+          }
+        }
+
+        recognition.onerror = (event) => {
+          console.warn('Speech Recognition notice:', event.error)
+        }
+
+        recognition.onend = () => {
+          if (isComponentMounted && isSubtitlesEnabled && callState === 'connected') {
+            try { recognition.start() } catch (e) {}
+          }
+        }
+
+        recognition.start()
+        speechRecognizerRef.current = recognition
+      } catch (err) {
+        console.error('Error initializing SpeechRecognition:', err)
+      }
+    } else {
+      if (speechRecognizerRef.current) {
+        try { speechRecognizerRef.current.stop() } catch (e) {}
+        speechRecognizerRef.current = null
+      }
+    }
+
+    return () => {
+      isComponentMounted = false
+      if (recognition) {
+        try { recognition.stop() } catch (e) {}
+      }
+    }
+  }, [isSubtitlesEnabled, callState, mySpokenLanguage, myTargetLanguage, roomId, socket, userName])
+
   // Cleanup WebRTC Call & Streams
   const cleanupCall = () => {
     if (peerConnectionRef.current) {
@@ -405,6 +562,14 @@ function App() {
       localStreamRef.current.getTracks().forEach(track => track.stop())
       localStreamRef.current = null
     }
+    if (speechRecognizerRef.current) {
+      try { speechRecognizerRef.current.stop() } catch (e) {}
+      speechRecognizerRef.current = null
+    }
+    if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current)
+    setActiveSubtitlePayload(null)
+    setIsSubtitlesEnabled(false)
+    setShowLanguagePicker(false)
     remoteStreamRef.current = null
     iceCandidatesQueueRef.current = []
     if (localVideoRef.current) localVideoRef.current.srcObject = null
@@ -605,6 +770,14 @@ function App() {
 
     newSocket.on('call_ended', () => {
       cleanupCall()
+    })
+
+    newSocket.on('call_subtitle', (payload) => {
+      setActiveSubtitlePayload(payload)
+      if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current)
+      subtitleTimerRef.current = setTimeout(() => {
+        setActiveSubtitlePayload(null)
+      }, 6000)
     })
 
     newSocket.on('ghost_mode_updated', ({ enabled, timer }) => {
@@ -2638,6 +2811,146 @@ function App() {
                 </div>
               )}
 
+              {/* Live Multilingual Call Subtitle Banner */}
+              {activeSubtitlePayload && callState === 'connected' && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '105px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: '92%',
+                  maxWidth: '560px',
+                  backgroundColor: 'rgba(5, 20, 18, 0.88)',
+                  backdropFilter: 'blur(16px)',
+                  border: `1px solid ${theme.primary}66`,
+                  borderRadius: '20px',
+                  padding: '14px 20px',
+                  boxShadow: `0 8px 32px rgba(0, 0, 0, 0.6), 0 0 15px ${theme.primary}22`,
+                  zIndex: 40,
+                  textAlign: 'center'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', color: theme.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '4px' }}>
+                    <span>💬 {activeSubtitlePayload.senderName}</span>
+                    <span>•</span>
+                    <span style={{ color: '#aebac1', fontWeight: '400' }}>
+                      {activeSubtitlePayload.isMine ? 'Your Speech' : 'Live Translation'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '16px', color: '#ffffff', fontWeight: '600', lineHeight: '1.4', wordBreak: 'break-word' }}>
+                    {activeSubtitlePayload.translatedText || activeSubtitlePayload.originalText}
+                  </div>
+                  {activeSubtitlePayload.originalText && activeSubtitlePayload.originalText !== activeSubtitlePayload.translatedText && (
+                    <div style={{ fontSize: '12px', color: '#90a0a9', marginTop: '4px', fontStyle: 'italic' }}>
+                      "{activeSubtitlePayload.originalText}"
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Language Selector Modal */}
+              {showLanguagePicker && callState === 'connected' && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '105px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: '90%',
+                  maxWidth: '380px',
+                  backgroundColor: 'rgba(8, 28, 25, 0.95)',
+                  backdropFilter: 'blur(20px)',
+                  border: `1px solid ${theme.primary}88`,
+                  borderRadius: '24px',
+                  padding: '20px',
+                  boxShadow: '0 12px 40px rgba(0,0,0,0.8)',
+                  zIndex: 50,
+                  color: '#ffffff'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h3 style={{ margin: 0, fontSize: '16px', color: theme.primary, fontWeight: '700' }}>
+                      🌐 Live Translator Settings
+                    </h3>
+                    <button onClick={() => setShowLanguagePicker(false)} style={{ background: 'none', border: 'none', color: '#aebac1', fontSize: '18px', cursor: 'pointer' }}>
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Spoken Language */}
+                  <div style={{ marginBottom: '14px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#aebac1', marginBottom: '6px' }}>
+                      🗣️ I will speak in:
+                    </label>
+                    <select
+                      value={mySpokenLanguage}
+                      onChange={(e) => setMySpokenLanguage(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '12px',
+                        backgroundColor: 'rgba(255,255,255,0.08)',
+                        color: '#ffffff',
+                        border: `1px solid ${theme.primary}44`,
+                        outline: 'none',
+                        fontSize: '14px'
+                      }}
+                    >
+                      {TRANSLATION_LANGUAGES.map(lang => (
+                        <option key={`spoken-${lang.code}`} value={lang.code} style={{ background: '#0a1d1a', color: '#fff' }}>
+                          {lang.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Target Language */}
+                  <div style={{ marginBottom: '18px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#aebac1', marginBottom: '6px' }}>
+                      🎯 Translate partner subtitles to:
+                    </label>
+                    <select
+                      value={myTargetLanguage}
+                      onChange={(e) => setMyTargetLanguage(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '12px',
+                        backgroundColor: 'rgba(255,255,255,0.08)',
+                        color: '#ffffff',
+                        border: `1px solid ${theme.primary}44`,
+                        outline: 'none',
+                        fontSize: '14px'
+                      }}
+                    >
+                      {TRANSLATION_LANGUAGES.map(lang => (
+                        <option key={`target-${lang.code}`} value={lang.code} style={{ background: '#0a1d1a', color: '#fff' }}>
+                          {lang.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setIsSubtitlesEnabled(true)
+                      setShowLanguagePicker(false)
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      borderRadius: '14px',
+                      backgroundColor: theme.primary,
+                      color: '#051312',
+                      border: 'none',
+                      fontWeight: 'bold',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      boxShadow: `0 4px 15px ${theme.primary}44`
+                    }}
+                  >
+                    ✅ Turn On Subtitles
+                  </button>
+                </div>
+              )}
+
               {/* Bottom Control Bar */}
               <div style={{ zIndex: 30, display: 'flex', justifyContent: 'center' }}>
                 {callState === 'incoming' ? (
@@ -2670,6 +2983,55 @@ function App() {
                     {callType === 'video' && (
                       <button onClick={toggleVideoMute} title="Toggle Camera" style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: isVideoMuted ? '#f15c6b' : 'rgba(255,255,255,0.12)', color: 'white', border: 'none', fontSize: '20px', cursor: 'pointer' }}>
                         {isVideoMuted ? '🚫' : '📹'}
+                      </button>
+                    )}
+
+                    {/* Live Translator & Subtitles Toggle */}
+                    {callState === 'connected' && (
+                      <button
+                        onClick={() => {
+                          if (!isSubtitlesEnabled) {
+                            setShowLanguagePicker(true)
+                          } else {
+                            setIsSubtitlesEnabled(false)
+                            setShowLanguagePicker(false)
+                          }
+                        }}
+                        title="Live Call Subtitles & Real-Time Voice Translator"
+                        style={{
+                          width: '48px',
+                          height: '48px',
+                          borderRadius: '50%',
+                          backgroundColor: isSubtitlesEnabled ? theme.primary : 'rgba(255,255,255,0.12)',
+                          color: isSubtitlesEnabled ? '#051312' : '#ffffff',
+                          border: 'none',
+                          fontSize: '20px',
+                          cursor: 'pointer',
+                          boxShadow: isSubtitlesEnabled ? `0 0 14px ${theme.primary}aa` : 'none',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        💬
+                      </button>
+                    )}
+
+                    {/* Language Settings Modal Toggle */}
+                    {callState === 'connected' && isSubtitlesEnabled && (
+                      <button
+                        onClick={() => setShowLanguagePicker(!showLanguagePicker)}
+                        title="Language Translator Settings"
+                        style={{
+                          width: '48px',
+                          height: '48px',
+                          borderRadius: '50%',
+                          backgroundColor: 'rgba(255,255,255,0.12)',
+                          color: theme.primary,
+                          border: 'none',
+                          fontSize: '20px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🌐
                       </button>
                     )}
 
