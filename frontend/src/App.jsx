@@ -871,6 +871,10 @@ function App() {
       if (msgObj.roomId && msgObj.id) {
         newSocket.emit('mark_read', { roomId: msgObj.roomId, messageId: msgObj.id });
       }
+
+      if (isTtsEnabledRef.current && msgObj.text && !msgObj.text.includes('.png') && !msgObj.text.includes('.jpg')) {
+        speakText(msgObj.text, myTargetLanguageRef.current || 'en')
+      }
     })
 
     newSocket.on('message_read', ({ messageId }) => {
@@ -2040,6 +2044,32 @@ function App() {
                   >
                     👻
                   </button>
+
+                  <button
+                    onClick={() => {
+                      const nextState = !isTtsEnabled
+                      setIsTtsEnabled(nextState)
+                      if (!nextState && 'speechSynthesis' in window) {
+                        window.speechSynthesis.cancel()
+                      }
+                    }}
+                    title={isTtsEnabled ? "Auto Voice Readout for Incoming Messages: ON" : "Auto Voice Readout for Incoming Messages: OFF"}
+                    style={{
+                      padding: '4px 8px',
+                      backgroundColor: isTtsEnabled ? 'rgba(245, 158, 11, 0.2)' : 'rgba(0, 245, 196, 0.08)',
+                      color: isTtsEnabled ? '#f59e0b' : theme.primary,
+                      border: isTtsEnabled ? '1px solid #f59e0b' : `1px solid ${theme.primary}`,
+                      borderRadius: '12px',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    🔊 {isTtsEnabled ? 'Voice ON' : 'Voice OFF'}
+                  </button>
                 </div>
               </div>
 
@@ -2486,13 +2516,6 @@ function App() {
                         justifyContent: 'flex-end',
                         gap: '6px'
                       }}>
-                        <button
-                          onClick={() => speakText(msg.text, myTargetLanguage)}
-                          title="Read Aloud in Native Voice"
-                          style={{ background: 'none', border: 'none', color: '#8696a0', cursor: 'pointer', fontSize: '11px', padding: 0 }}
-                        >
-                          🔊
-                        </button>
                         <button
                           onClick={() => handleTogglePin(msg.id, msg.isPinned)}
                           title={msg.isPinned ? "Unpin Message" : "Pin Message to Top"}
@@ -3188,30 +3211,12 @@ function App() {
                   zIndex: 40,
                   textAlign: 'center'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: theme.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                      <span>💬 {activeSubtitlePayload.senderName}</span>
-                      <span>•</span>
-                      <span style={{ color: '#aebac1', fontWeight: '400' }}>
-                        {activeSubtitlePayload.isMine ? 'Your Speech' : 'Live Translation'}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => speakText(activeSubtitlePayload.translatedText || activeSubtitlePayload.originalText, myTargetLanguage)}
-                      title="Speak Subtitle Aloud"
-                      style={{
-                        backgroundColor: 'rgba(0, 245, 196, 0.15)',
-                        color: theme.primary,
-                        border: `1px solid ${theme.primary}66`,
-                        borderRadius: '12px',
-                        padding: '2px 8px',
-                        fontSize: '11px',
-                        fontWeight: 'bold',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      🔊 Listen
-                    </button>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', color: theme.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '4px' }}>
+                    <span>💬 {activeSubtitlePayload.senderName}</span>
+                    <span>•</span>
+                    <span style={{ color: '#aebac1', fontWeight: '400' }}>
+                      {activeSubtitlePayload.isMine ? 'Your Speech' : 'Live Translation'}
+                    </span>
                   </div>
                   <div style={{ fontSize: '16px', color: '#ffffff', fontWeight: '600', lineHeight: '1.4', wordBreak: 'break-word' }}>
                     {activeSubtitlePayload.translatedText || activeSubtitlePayload.originalText}
