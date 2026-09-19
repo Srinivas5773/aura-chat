@@ -405,8 +405,9 @@ function App() {
             }
           }
 
-          if (localVideoRef.current) {
-            localVideoRef.current.srcObject = displayStream
+          // Keep local video element bound to camera stream to prevent hall-of-mirrors infinity loop
+          if (localVideoRef.current && localStreamRef.current) {
+            localVideoRef.current.srcObject = localStreamRef.current
           }
           setIsScreenSharing(true)
         }
@@ -2486,6 +2487,13 @@ function App() {
                         gap: '6px'
                       }}>
                         <button
+                          onClick={() => speakText(msg.text, myTargetLanguage)}
+                          title="Read Aloud in Native Voice"
+                          style={{ background: 'none', border: 'none', color: '#8696a0', cursor: 'pointer', fontSize: '11px', padding: 0 }}
+                        >
+                          🔊
+                        </button>
+                        <button
                           onClick={() => handleTogglePin(msg.id, msg.isPinned)}
                           title={msg.isPinned ? "Unpin Message" : "Pin Message to Top"}
                           style={{ background: 'none', border: 'none', color: msg.isPinned ? theme.primary : '#8696a0', cursor: 'pointer', fontSize: '11px', padding: 0 }}
@@ -3180,12 +3188,30 @@ function App() {
                   zIndex: 40,
                   textAlign: 'center'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '11px', color: theme.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '4px' }}>
-                    <span>💬 {activeSubtitlePayload.senderName}</span>
-                    <span>•</span>
-                    <span style={{ color: '#aebac1', fontWeight: '400' }}>
-                      {activeSubtitlePayload.isMine ? 'Your Speech' : 'Live Translation'}
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: theme.primary, fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                      <span>💬 {activeSubtitlePayload.senderName}</span>
+                      <span>•</span>
+                      <span style={{ color: '#aebac1', fontWeight: '400' }}>
+                        {activeSubtitlePayload.isMine ? 'Your Speech' : 'Live Translation'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => speakText(activeSubtitlePayload.translatedText || activeSubtitlePayload.originalText, myTargetLanguage)}
+                      title="Speak Subtitle Aloud"
+                      style={{
+                        backgroundColor: 'rgba(0, 245, 196, 0.15)',
+                        color: theme.primary,
+                        border: `1px solid ${theme.primary}66`,
+                        borderRadius: '12px',
+                        padding: '2px 8px',
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      🔊 Listen
+                    </button>
                   </div>
                   <div style={{ fontSize: '16px', color: '#ffffff', fontWeight: '600', lineHeight: '1.4', wordBreak: 'break-word' }}>
                     {activeSubtitlePayload.translatedText || activeSubtitlePayload.originalText}
