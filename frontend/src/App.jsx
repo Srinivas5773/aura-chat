@@ -2690,72 +2690,21 @@ function App() {
               left: 0,
               right: 0,
               bottom: 0,
-              backgroundColor: '#030d0c',
+              width: '100vw',
+              height: '100vh',
+              backgroundColor: '#000000',
               zIndex: 99999,
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-              padding: '24px 16px',
-              color: '#e9edef',
+              overflow: 'hidden',
+              userSelect: 'none',
               animation: 'fadeIn 0.2s ease-in-out'
             }}>
-              {/* Top Calling Status Header */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                zIndex: 30,
-                backgroundColor: 'rgba(0,0,0,0.4)',
-                padding: '10px 16px',
-                borderRadius: '20px',
-                backdropFilter: 'blur(10px)'
-              }}>
-                <div>
-                  <div style={{ fontSize: '12px', color: theme.primary, fontWeight: 'bold', letterSpacing: '1px' }}>
-                    🔒 END-TO-END ENCRYPTED {callType.toUpperCase()} CALL
-                  </div>
-                  <h2 style={{ margin: '2px 0 0 0', fontSize: '20px', fontWeight: 'bold', color: '#ffffff' }}>
-                    {otherUserName}
-                  </h2>
-                  <div style={{ fontSize: '12px', color: '#aebac1' }}>
-                    {callState === 'outgoing' && 'Ringing...'}
-                    {callState === 'incoming' && 'Incoming Call...'}
-                    {callState === 'connected' && `🟢 Live • ${formatCallDuration(callDuration)}`}
-                    {callState === 'connected' && isSubtitlesEnabled && (
-                      <span style={{ marginLeft: '8px', color: theme.primary, fontWeight: 'bold' }}>
-                        • 💬 Translator Active ({mySpokenLanguage.toUpperCase()} ➔ {myTargetLanguage.toUpperCase()})
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {callType === 'video' && callState === 'connected' && (
-                  <button
-                    onClick={() => setShowFilterPicker(!showFilterPicker)}
-                    style={{
-                      backgroundColor: showFilterPicker ? theme.primary : 'rgba(255,255,255,0.15)',
-                      color: showFilterPicker ? '#051312' : '#ffffff',
-                      border: `1px solid ${theme.primary}66`,
-                      borderRadius: '20px',
-                      padding: '6px 12px',
-                      fontSize: '12px',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      backdropFilter: 'blur(4px)'
-                    }}
-                  >
-                    ✨ Filters
-                  </button>
-                )}
-              </div>
-
-              {/* Live Video View Container */}
+              {/* Full-Screen Edge-to-Edge Remote Video & Audio Stream Container */}
               <div style={{
                 position: 'absolute',
                 top: 0,
                 left: 0,
-                right: 0,
-                bottom: 0,
+                width: '100%',
+                height: '100%',
                 overflow: 'hidden',
                 display: 'flex',
                 alignItems: 'center',
@@ -2765,7 +2714,7 @@ function App() {
                 {/* Dedicated Remote Audio Player for 100% Guaranteed Sound */}
                 <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
 
-                {/* Remote Video Stream */}
+                {/* Remote Video Stream - Exact WhatsApp edge-to-edge cover */}
                 <video
                   ref={remoteVideoRef}
                   autoPlay
@@ -2787,43 +2736,110 @@ function App() {
                   muted
                   style={{
                     position: 'absolute',
-                    top: '90px',
+                    top: 'calc(env(safe-area-inset-top, 0px) + 85px)',
                     right: '16px',
-                    width: '110px',
-                    height: '160px',
+                    width: '105px',
+                    height: '155px',
                     objectFit: 'cover',
                     borderRadius: '16px',
                     border: `2px solid ${theme.primary}`,
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.8)',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.85), 0 0 15px rgba(0,245,196,0.3)',
                     filter: videoFilterStyles[activeVideoFilter] || 'none',
                     display: (callType === 'video' && !isVideoMuted && (callState === 'connected' || callState === 'outgoing')) ? 'block' : 'none',
                     zIndex: 25,
-                    transform: facingMode === 'user' ? 'scaleX(-1)' : 'none'
+                    transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+                    transition: 'all 0.3s ease'
                   }}
                 />
 
-                {/* Avatar Display when Camera Muted or Audio Call */}
+                {/* WhatsApp Audio Call Screen / Camera Muted View */}
                 {(callType !== 'video' || isVideoMuted || callState === 'incoming') && (
-                  <div style={{ textAlign: 'center', zIndex: 10 }}>
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 10,
+                    padding: '20px'
+                  }}>
                     <div style={{
-                      width: '120px',
-                      height: '120px',
+                      width: '130px',
+                      height: '130px',
                       borderRadius: '50%',
                       backgroundColor: theme.primary,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '56px',
-                      margin: '0 auto 20px auto',
+                      fontSize: '60px',
                       color: '#051312',
-                      boxShadow: `0 0 40px ${theme.primary}88`
+                      boxShadow: `0 0 50px ${theme.primary}88, 0 0 100px ${theme.primary}44`,
+                      marginBottom: '20px'
                     }}>
-                      {otherUserName.charAt(0).toUpperCase()}
+                      {otherUserName ? otherUserName.charAt(0).toUpperCase() : '👤'}
                     </div>
-                    <div style={{ fontSize: '15px', color: '#aebac1', fontWeight: '500' }}>
-                      {callType === 'video' ? 'Camera Muted' : 'AURA HD Audio Connection'}
+                    <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffffff', margin: '0 0 8px 0', textShadow: '0 2px 10px rgba(0,0,0,0.8)' }}>
+                      {otherUserName}
+                    </h2>
+                    <div style={{ fontSize: '14px', color: theme.primary, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                      {callType === 'video' ? 'Camera Muted' : '⚡ AURA Encrypted HD Audio'}
                     </div>
                   </div>
+                )}
+              </div>
+
+              {/* Top WhatsApp Gradient Status Header */}
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)',
+                paddingBottom: '24px',
+                paddingLeft: '20px',
+                paddingRight: '20px',
+                background: 'linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, rgba(0,0,0,0) 100%)',
+                zIndex: 30,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start'
+              }}>
+                <div>
+                  <div style={{ fontSize: '11px', color: theme.primary, fontWeight: 'bold', letterSpacing: '1px' }}>
+                    🔒 END-TO-END ENCRYPTED {callType.toUpperCase()} CALL
+                  </div>
+                  <h2 style={{ margin: '2px 0 0 0', fontSize: '22px', fontWeight: 'bold', color: '#ffffff', textShadow: '0 2px 8px rgba(0,0,0,0.8)' }}>
+                    {otherUserName}
+                  </h2>
+                  <div style={{ fontSize: '13px', color: '#e9edef', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {callState === 'outgoing' && 'Ringing...'}
+                    {callState === 'incoming' && 'Incoming Call...'}
+                    {callState === 'connected' && `🟢 Live • ${formatCallDuration(callDuration)}`}
+                    {callState === 'connected' && isSubtitlesEnabled && (
+                      <span style={{ marginLeft: '6px', color: theme.primary, fontWeight: 'bold' }}>
+                        • 💬 Subtitles Active ({mySpokenLanguage.toUpperCase()} ➔ {myTargetLanguage.toUpperCase()})
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {callType === 'video' && callState === 'connected' && (
+                  <button
+                    onClick={() => setShowFilterPicker(!showFilterPicker)}
+                    style={{
+                      backgroundColor: showFilterPicker ? theme.primary : 'rgba(255,255,255,0.18)',
+                      color: showFilterPicker ? '#051312' : '#ffffff',
+                      border: `1px solid ${theme.primary}88`,
+                      borderRadius: '20px',
+                      padding: '8px 16px',
+                      fontSize: '13px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      backdropFilter: 'blur(10px)',
+                      boxShadow: '0 4px 15px rgba(0,0,0,0.4)'
+                    }}
+                  >
+                    ✨ Filters
+                  </button>
                 )}
               </div>
 
@@ -2831,7 +2847,7 @@ function App() {
               {showFilterPicker && callType === 'video' && (
                 <div style={{
                   position: 'absolute',
-                  bottom: '110px',
+                  bottom: '120px',
                   left: '16px',
                   right: '16px',
                   backgroundColor: 'rgba(5, 19, 18, 0.92)',
@@ -2877,12 +2893,12 @@ function App() {
               {activeSubtitlePayload && callState === 'connected' && (
                 <div style={{
                   position: 'absolute',
-                  bottom: '105px',
+                  bottom: '115px',
                   left: '50%',
                   transform: 'translateX(-50%)',
                   width: '92%',
                   maxWidth: '560px',
-                  backgroundColor: 'rgba(5, 20, 18, 0.88)',
+                  backgroundColor: 'rgba(5, 20, 18, 0.92)',
                   backdropFilter: 'blur(16px)',
                   border: `1px solid ${theme.primary}66`,
                   borderRadius: '20px',
@@ -2913,7 +2929,7 @@ function App() {
               {showLanguagePicker && callState === 'connected' && (
                 <div style={{
                   position: 'absolute',
-                  bottom: '105px',
+                  bottom: '115px',
                   left: '50%',
                   transform: 'translateX(-50%)',
                   width: '90%',
@@ -3013,14 +3029,25 @@ function App() {
                 </div>
               )}
 
-              {/* Bottom Control Bar */}
-              <div style={{ zIndex: 30, display: 'flex', justifyContent: 'center' }}>
+              {/* Bottom WhatsApp Gradient Control Bar */}
+              <div style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)',
+                paddingTop: '30px',
+                background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, rgba(0,0,0,0) 100%)',
+                zIndex: 30,
+                display: 'flex',
+                justifyContent: 'center'
+              }}>
                 {callState === 'incoming' ? (
-                  <div style={{ display: 'flex', gap: '40px', marginBottom: '20px' }}>
-                    <button onClick={rejectCall} style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#f15c6b', color: 'white', border: 'none', fontSize: '24px', cursor: 'pointer', boxShadow: '0 4px 16px rgba(241, 92, 107, 0.4)' }}>
+                  <div style={{ display: 'flex', gap: '48px', marginBottom: '10px' }}>
+                    <button onClick={rejectCall} title="Decline Call" style={{ width: '68px', height: '68px', borderRadius: '50%', backgroundColor: '#f15c6b', color: 'white', border: 'none', fontSize: '26px', cursor: 'pointer', boxShadow: '0 6px 20px rgba(241, 92, 107, 0.6)' }}>
                       📞
                     </button>
-                    <button onClick={acceptCall} style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: theme.primary, color: '#051312', border: 'none', fontSize: '24px', cursor: 'pointer', boxShadow: `0 4px 16px ${theme.primary}66` }}>
+                    <button onClick={acceptCall} title="Accept Call" style={{ width: '68px', height: '68px', borderRadius: '50%', backgroundColor: theme.primary, color: '#051312', border: 'none', fontSize: '26px', cursor: 'pointer', boxShadow: `0 6px 20px ${theme.primary}88` }}>
                       📞
                     </button>
                   </div>
@@ -3029,21 +3056,21 @@ function App() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '16px',
-                    backgroundColor: 'rgba(8, 29, 26, 0.85)',
-                    padding: '12px 20px',
-                    borderRadius: '32px',
-                    backdropFilter: 'blur(16px)',
-                    border: `1px solid ${theme.primary}44`,
-                    boxShadow: '0 8px 30px rgba(0,0,0,0.6)'
+                    backgroundColor: 'rgba(8, 29, 26, 0.88)',
+                    padding: '12px 24px',
+                    borderRadius: '40px',
+                    backdropFilter: 'blur(20px)',
+                    border: `1px solid ${theme.primary}55`,
+                    boxShadow: '0 12px 40px rgba(0,0,0,0.8)'
                   }}>
                     {/* Mute Mic */}
-                    <button onClick={toggleMicMute} title="Toggle Microphone" style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: isMicMuted ? '#f15c6b' : 'rgba(255,255,255,0.12)', color: 'white', border: 'none', fontSize: '20px', cursor: 'pointer' }}>
+                    <button onClick={toggleMicMute} title="Toggle Microphone" style={{ width: '50px', height: '50px', borderRadius: '50%', backgroundColor: isMicMuted ? '#f15c6b' : 'rgba(255,255,255,0.12)', color: 'white', border: 'none', fontSize: '22px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
                       {isMicMuted ? '🔇' : '🎙️'}
                     </button>
 
                     {/* Toggle Video */}
                     {callType === 'video' && (
-                      <button onClick={toggleVideoMute} title="Toggle Camera" style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: isVideoMuted ? '#f15c6b' : 'rgba(255,255,255,0.12)', color: 'white', border: 'none', fontSize: '20px', cursor: 'pointer' }}>
+                      <button onClick={toggleVideoMute} title="Toggle Camera" style={{ width: '50px', height: '50px', borderRadius: '50%', backgroundColor: isVideoMuted ? '#f15c6b' : 'rgba(255,255,255,0.12)', color: 'white', border: 'none', fontSize: '22px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
                         {isVideoMuted ? '🚫' : '📹'}
                       </button>
                     )}
@@ -3061,15 +3088,15 @@ function App() {
                         }}
                         title="Live Call Subtitles & Real-Time Voice Translator"
                         style={{
-                          width: '48px',
-                          height: '48px',
+                          width: '50px',
+                          height: '50px',
                           borderRadius: '50%',
                           backgroundColor: isSubtitlesEnabled ? theme.primary : 'rgba(255,255,255,0.12)',
                           color: isSubtitlesEnabled ? '#051312' : '#ffffff',
                           border: 'none',
-                          fontSize: '20px',
+                          fontSize: '22px',
                           cursor: 'pointer',
-                          boxShadow: isSubtitlesEnabled ? `0 0 14px ${theme.primary}aa` : 'none',
+                          boxShadow: isSubtitlesEnabled ? `0 0 16px ${theme.primary}aa` : 'none',
                           transition: 'all 0.2s ease'
                         }}
                       >
@@ -3083,13 +3110,13 @@ function App() {
                         onClick={() => setShowLanguagePicker(!showLanguagePicker)}
                         title="Language Translator Settings"
                         style={{
-                          width: '48px',
-                          height: '48px',
+                          width: '50px',
+                          height: '50px',
                           borderRadius: '50%',
                           backgroundColor: 'rgba(255,255,255,0.12)',
                           color: theme.primary,
                           border: 'none',
-                          fontSize: '20px',
+                          fontSize: '22px',
                           cursor: 'pointer'
                         }}
                       >
@@ -3099,13 +3126,13 @@ function App() {
 
                     {/* Flip Camera (Front / Back) */}
                     {callType === 'video' && !isVideoMuted && (
-                      <button onClick={toggleCameraFacingMode} title="Flip Camera (Front / Back)" style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.12)', color: theme.primary, border: 'none', fontSize: '20px', cursor: 'pointer' }}>
+                      <button onClick={toggleCameraFacingMode} title="Flip Camera (Front / Back)" style={{ width: '50px', height: '50px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.12)', color: theme.primary, border: 'none', fontSize: '22px', cursor: 'pointer' }}>
                         🔄
                       </button>
                     )}
 
                     {/* End Call */}
-                    <button onClick={endCall} title="End Call" style={{ width: '56px', height: '56px', borderRadius: '50%', backgroundColor: '#f15c6b', color: 'white', border: 'none', fontSize: '22px', cursor: 'pointer', boxShadow: '0 4px 16px rgba(241, 92, 107, 0.5)' }}>
+                    <button onClick={endCall} title="End Call" style={{ width: '58px', height: '58px', borderRadius: '50%', backgroundColor: '#f15c6b', color: 'white', border: 'none', fontSize: '24px', cursor: 'pointer', boxShadow: '0 6px 20px rgba(241, 92, 107, 0.6)' }}>
                       📞
                     </button>
                   </div>
