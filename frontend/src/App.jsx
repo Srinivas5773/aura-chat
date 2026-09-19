@@ -613,8 +613,16 @@ function App() {
           }
         }
 
-        recognition.start()
-        speechRecognizerRef.current = recognition
+        const startTimer = setTimeout(() => {
+          try {
+            if (isComponentMounted && isSubtitlesEnabled && callState === 'connected' && !isMicMuted) {
+              recognition.start()
+              speechRecognizerRef.current = recognition
+            }
+          } catch (err) {
+            console.warn('SpeechRecognition start notice:', err)
+          }
+        }, 150)
       } catch (err) {
         console.error('Error starting SpeechRecognition:', err)
       }
@@ -856,13 +864,16 @@ function App() {
     })
 
     newSocket.on('call_subtitle', async (payload) => {
+      console.log('Received call_subtitle payload from partner:', payload)
       let displayTranslated = payload.translatedText
+      const srcLang = payload.sourceLang || 'auto'
+      const myTarget = myTargetLanguageRef.current || 'en'
+
       if (payload.originalText) {
         try {
-          const myTarget = myTargetLanguageRef.current || 'en'
-          displayTranslated = await translateTextFree(payload.originalText, myTarget)
+          displayTranslated = await translateTextFree(payload.originalText, myTarget, srcLang)
         } catch (err) {
-          console.error('Receiver auto-translation error:', err)
+          console.error('Receiver auto-translation notice:', err)
         }
       }
 
