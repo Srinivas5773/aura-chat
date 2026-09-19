@@ -57,20 +57,46 @@ const getSpeechLocale = (langCode) => {
   return map[langCode] || langCode
 }
 
-const translateTextFree = async (text, targetLang) => {
+const translateTextFree = async (text, targetLang, sourceLang = 'auto') => {
   if (!text || !targetLang) return text
+  const cleanText = text.trim()
+  if (!cleanText) return ''
+  if (sourceLang === targetLang) return cleanText
+
+  // Provider 1: MyMemory Free Translation API (100% CORS-friendly)
   try {
-    const response = await fetch(
-      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`
-    )
-    const data = await response.json()
-    if (data && data[0]) {
-      return data[0].map(item => item[0]).join('')
+    const pair = sourceLang && sourceLang !== 'auto' ? `${sourceLang}|${targetLang}` : `autodetect|${targetLang}`
+    const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanText)}&langpair=${pair}`)
+    if (response.ok) {
+      const data = await response.json()
+      if (data && data.responseData && data.responseData.translatedText) {
+        const result = data.responseData.translatedText.trim()
+        if (result && !result.toLowerCase().includes('mymemory warning')) {
+          return result
+        }
+      }
     }
   } catch (err) {
-    console.error('Free Translation error:', err)
+    console.warn('MyMemory translation fallback notice:', err)
   }
-  return text
+
+  // Provider 2: Google GTx Free API
+  try {
+    const sl = sourceLang || 'auto'
+    const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${targetLang}&dt=t&q=${encodeURIComponent(cleanText)}`)
+    if (response.ok) {
+      const data = await response.json()
+      if (data && data[0]) {
+        const result = data[0].map(item => item[0]).join('').trim()
+        if (result) return result
+      }
+    }
+  } catch (err) {
+    console.warn('Google translation fallback notice:', err)
+  }
+
+  // Fallback: Always return original spoken text so subtitles NEVER fail to display
+  return cleanText
 }
 
 // Web Audio API Call Ringtone & Sound Effects Synthesizer
@@ -497,61 +523,72 @@ function App() {
         recognition.lang = getSpeechLocale(mySpokenLanguageRef.current || mySpokenLanguage)
 
         recognition.onresult = async (event) => {
-          let combinedTranscript = ''
-          for (let i = 0; i < event.results.length; ++i) {
-            if (event.results[i][0] && event.results[i][0].transcript) {
-              combinedTranscript += event.results[i][0].transcript + ' '
+          let interimText = ''
+          let finalText = ''
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const transcript = event.results[i][0]?.transcript || ''
+            if (event.results[i].isFinal) {
+              finalText += transcript + ' '
+            } else {
+              interimText += transcript + ' '
             }
           }
 
-          const spokenText = combinedTranscript.trim()
-          if (!spokenText || spokenText === lastSentTextRef.current) return
+          const currentLiveSpeech = (finalText || interimText).trim()
+          if (!currentLiveSpeech) return
 
-          lastSentTextRef.current = spokenText
+          const srcLang = mySpokenLanguageRef.current || mySpokenLanguage || 'hi'
+          const tgtLang = myTargetLanguageRef.current || myTargetLanguage || 'en'
 
-          // Immediate local subtitle rendering for the speaker
+          // 1. Render immediate live speech feedback for the speaker
           setActiveSubtitlePayload({
             senderName: userNameRef.current || 'You',
-            originalText: spokenText,
-            translatedText: spokenText,
+            originalText: currentLiveSpeech,
+            translatedText: currentLiveSpeech,
             isMine: true
           })
 
-          // Debounced free translation & socket relay
-          if (translationDebounceRef.current) clearTimeout(translationDebounceRef.current)
-          translationDebounceRef.current = setTimeout(async () => {
-            const targetLang = myTargetLanguageRef.current || myTargetLanguage || 'en'
-            const translated = await translateTextFree(spokenText, targetLang)
+          // 2. Translate and relay finalized spoken phrases via Socket
+          if (finalText.trim()) {
+            const cleanFinal = finalText.trim()
+            if (cleanFinal !== lastSentTextRef.current) {
+              lastSentTextRef.current = cleanFinal
 
-            const payload = {
-              roomId: roomIdRef.current || roomId,
-              senderName: userNameRef.current || 'Partner',
-              originalText: spokenText,
-              translatedText: translated,
-              targetLang: targetLang
+              const translated = await translateTextFree(cleanFinal, tgtLang, srcLang)
+
+              const payload = {
+                roomId: roomIdRef.current || roomId,
+                senderName: userNameRef.current || 'Partner',
+                originalText: cleanFinal,
+                translatedText: translated,
+                sourceLang: srcLang,
+                targetLang: tgtLang
+              }
+
+              const activeSocket = socketRef.current || socket
+              if (activeSocket) {
+                console.log('Emitting call_subtitle to partner:', payload)
+                activeSocket.emit('call_subtitle', payload)
+              }
+
+              setActiveSubtitlePayload({
+                senderName: userNameRef.current || 'You',
+                originalText: cleanFinal,
+                translatedText: translated,
+                isMine: true
+              })
+
+              if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current)
+              subtitleTimerRef.current = setTimeout(() => {
+                if (isComponentMounted) setActiveSubtitlePayload(null)
+              }, 6500)
             }
-
-            const activeSocket = socketRef.current || socket
-            if (activeSocket) {
-              activeSocket.emit('call_subtitle', payload)
-            }
-
-            setActiveSubtitlePayload({
-              senderName: userNameRef.current || 'You',
-              originalText: spokenText,
-              translatedText: translated,
-              isMine: true
-            })
-
-            if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current)
-            subtitleTimerRef.current = setTimeout(() => {
-              if (isComponentMounted) setActiveSubtitlePayload(null)
-            }, 6000)
-          }, 350)
+          }
         }
 
         recognition.onerror = (event) => {
-          console.warn('Speech Recognition notice/error:', event.error)
+          console.warn('Speech Recognition notice:', event.error)
           if (event.error === 'not-allowed') {
             alert('Microphone permission for Speech Recognition was denied. Please allow mic access in browser/device settings.')
             setIsSubtitlesEnabled(false)
@@ -568,14 +605,14 @@ function App() {
               } catch (e) {
                 console.warn('Speech recognition restart quiet fallback:', e)
               }
-            }, 400)
+            }, 300)
           }
         }
 
         recognition.start()
         speechRecognizerRef.current = recognition
       } catch (err) {
-        console.error('Error initializing SpeechRecognition:', err)
+        console.error('Error starting SpeechRecognition:', err)
       }
     } else {
       if (speechRecognizerRef.current) {
