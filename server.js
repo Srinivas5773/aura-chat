@@ -159,6 +159,21 @@ io.on('connection', (socket) => {
     console.log(`WebRTC Call ended in room ${roomId}`);
     io.to(roomId).emit('call_ended');
   });
+
+  socket.on('pin_message', ({ roomId, messageId, isPinned }) => {
+    if (rooms[roomId] && rooms[roomId].messages) {
+      const msg = rooms[roomId].messages.find(m => m.id === messageId);
+      if (msg) {
+        msg.isPinned = isPinned;
+      }
+    }
+    io.to(roomId).emit('message_pinned', { messageId, isPinned });
+  });
+
+  socket.on('screenshot_taken', ({ roomId, userName }) => {
+    console.log(`Screenshot alert by ${userName} in room ${roomId}`);
+    socket.to(roomId).emit('screenshot_alert', { userName, timestamp: Date.now() });
+  });
   
   socket.on('toggle_ghost_mode', ({ roomId, enabled, timer }) => {
     const room = rooms[roomId];

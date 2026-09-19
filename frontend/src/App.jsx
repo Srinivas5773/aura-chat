@@ -322,6 +322,100 @@ function App() {
   const [showLanguagePicker, setShowLanguagePicker] = useState(false)
   const [activeSubtitlePayload, setActiveSubtitlePayload] = useState(null)
 
+  // Feature 1: Screenshot Guard State
+  const [screenshotAlert, setScreenshotAlert] = useState(null)
+
+  // Feature 2: Live Screen Sharing State
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const screenStreamRef = useRef(null)
+
+  // Feature 4: Live Voice Readout (TTS) State
+  const [isTtsEnabled, setIsTtsEnabled] = useState(false)
+  const isTtsEnabledRef = useRef(isTtsEnabled)
+
+  useEffect(() => {
+    isTtsEnabledRef.current = isTtsEnabled
+  }, [isTtsEnabled])
+
+  const speakText = (text, langCode) => {
+    if (!('speechSynthesis' in window) || !text) return
+    try {
+      window.speechSynthesis.cancel()
+      const utterance = new SpeechSynthesisUtterance(text)
+      const locale = getSpeechLocale(langCode || 'en')
+      utterance.lang = locale
+      utterance.rate = 1.0
+      utterance.pitch = 1.0
+
+      const voices = window.speechSynthesis.getVoices()
+      const targetVoice = voices.find(v => v.lang.replace('_', '-') === locale || v.lang.startsWith(langCode))
+      if (targetVoice) utterance.voice = targetVoice
+
+      window.speechSynthesis.speak(utterance)
+    } catch (e) {
+      console.warn('Speech synthesis notice:', e)
+    }
+  }
+
+  const handleTogglePin = (messageId, currentPinnedState) => {
+    const nextPinnedState = !currentPinnedState
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isPinned: nextPinnedState } : m))
+    const activeSocket = socketRef.current || socket
+    if (activeSocket && roomIdRef.current) {
+      activeSocket.emit('pin_message', { roomId: roomIdRef.current, messageId, isPinned: nextPinnedState })
+    }
+  }
+
+  const handleToggleStar = (messageId) => {
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isStarred: !m.isStarred } : m))
+  }
+
+  const toggleScreenShare = async () => {
+    if (isScreenSharing) {
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach(t => t.stop())
+        screenStreamRef.current = null
+      }
+      setIsScreenSharing(false)
+      if (peerConnectionRef.current && localStreamRef.current) {
+        const cameraTrack = localStreamRef.current.getVideoTracks()[0]
+        const sender = peerConnectionRef.current.getSenders().find(s => s.track?.kind === 'video')
+        if (sender && cameraTrack) {
+          try { await sender.replaceTrack(cameraTrack) } catch (e) { console.error('Error restoring camera track:', e) }
+        }
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = localStreamRef.current
+        }
+      }
+    } else {
+      try {
+        const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+        screenStreamRef.current = displayStream
+        const screenVideoTrack = displayStream.getVideoTracks()[0]
+
+        if (screenVideoTrack) {
+          screenVideoTrack.onended = () => {
+            toggleScreenShare()
+          }
+
+          if (peerConnectionRef.current) {
+            const sender = peerConnectionRef.current.getSenders().find(s => s.track?.kind === 'video')
+            if (sender) {
+              await sender.replaceTrack(screenVideoTrack)
+            }
+          }
+
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = displayStream
+          }
+          setIsScreenSharing(true)
+        }
+      } catch (err) {
+        console.warn('Screen sharing cancelled or unavailable:', err)
+      }
+    }
+  }
+
   useEffect(() => {
     mySpokenLanguageRef.current = mySpokenLanguage
     myTargetLanguageRef.current = myTargetLanguage
@@ -666,6 +760,11 @@ function App() {
     if (localVideoRef.current) localVideoRef.current.srcObject = null
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => track.stop())
+      screenStreamRef.current = null
+    }
+    setIsScreenSharing(false)
     setCallState(null)
     setIncomingSdpOffer(null)
     setIsMicMuted(false)
@@ -863,6 +962,17 @@ function App() {
       cleanupCall()
     })
 
+    newSocket.on('message_pinned', ({ messageId, isPinned }) => {
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isPinned } : m))
+    })
+
+    newSocket.on('screenshot_alert', ({ userName: snapper }) => {
+      setScreenshotAlert({ snapper: snapper || 'Partner', timestamp: Date.now() })
+      setTimeout(() => {
+        setScreenshotAlert(null)
+      }, 4500)
+    })
+
     newSocket.on('call_subtitle', async (payload) => {
       console.log('Received call_subtitle payload from partner:', payload)
       let displayTranslated = payload.translatedText
@@ -877,11 +987,17 @@ function App() {
         }
       }
 
+      const finalText = displayTranslated || payload.translatedText || payload.originalText
+
       setActiveSubtitlePayload({
         ...payload,
-        translatedText: displayTranslated || payload.translatedText || payload.originalText,
+        translatedText: finalText,
         isMine: false
       })
+
+      if (isTtsEnabledRef.current) {
+        speakText(finalText, myTarget)
+      }
 
       if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current)
       subtitleTimerRef.current = setTimeout(() => {
@@ -915,6 +1031,42 @@ function App() {
 
     return () => newSocket.close()
   }, [])
+
+  // Screenshot Flash Guard Listener Effect
+  useEffect(() => {
+    const handleScreenshotTrigger = (snapperName = 'You') => {
+      if (callState === 'connected' || ghostMode) {
+        setScreenshotAlert({ snapper: snapperName, timestamp: Date.now() })
+        const activeSocket = socketRef.current || socket
+        if (activeSocket && roomIdRef.current) {
+          activeSocket.emit('screenshot_taken', { roomId: roomIdRef.current, userName: userNameRef.current || 'Partner' })
+        }
+        setTimeout(() => {
+          setScreenshotAlert(null)
+        }, 4500)
+      }
+    }
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'PrintScreen' || (e.key === 'P' && e.ctrlKey) || (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's')) {
+        handleScreenshotTrigger(userNameRef.current || 'You')
+      }
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.hidden && (callState === 'connected' || ghostMode)) {
+        handleScreenshotTrigger(userNameRef.current || 'You')
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [callState, ghostMode, roomId, socket, userName])
 
   // Initialize WebRTC PeerConnection
   const createPeerConnection = (stream) => {
@@ -1503,6 +1655,37 @@ function App() {
 
   return (
     <div className="android-wrapper">
+      {/* Screenshot Flash Guard Warning Banner */}
+      {screenshotAlert && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: 'rgba(239, 68, 68, 0.95)',
+          border: '1px solid #f87171',
+          color: '#ffffff',
+          padding: '10px 18px',
+          borderRadius: '20px',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(239, 68, 68, 0.5)',
+          zIndex: 999999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          animation: 'fadeIn 0.2s ease'
+        }}>
+          <span style={{ fontSize: '22px' }}>📸</span>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Screenshot / Capture Alert!
+            </div>
+            <div style={{ fontSize: '11px', opacity: 0.9 }}>
+              {screenshotAlert.snapper} took a screenshot or left screen!
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Dedicated Remote Audio Player for 100% Guaranteed Sound across all call states */}
       <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: 'none' }} />
       <div className="android-device" style={{ backgroundColor: theme.bg }}>
@@ -1910,6 +2093,37 @@ function App() {
                 </button>
               </div>
 
+              {/* Top Pinned Messages Bar */}
+              {messages.some(m => m.isPinned) && (
+                <div style={{
+                  backgroundColor: 'rgba(0, 245, 196, 0.1)',
+                  borderBottom: `1px solid ${theme.primary}44`,
+                  padding: '6px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontSize: '12px',
+                  color: theme.primary,
+                  backdropFilter: 'blur(8px)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                    <span>📌</span>
+                    <span style={{ fontWeight: 'bold' }}>Pinned:</span>
+                    <span style={{ color: theme.text, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {messages.filter(m => m.isPinned).map(m => m.text || (m.type === 'image' ? '[Photo]' : '[Media]')).join(' • ')}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      messages.filter(m => m.isPinned).forEach(m => handleTogglePin(m.id, true))
+                    }}
+                    style={{ background: 'none', border: 'none', color: '#8696a0', fontSize: '11px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    Clear Pins
+                  </button>
+                </div>
+              )}
+
               {/* Chat Messages Scroll Area */}
               <div
                 ref={messagesContainerRef}
@@ -2271,6 +2485,20 @@ function App() {
                         justifyContent: 'flex-end',
                         gap: '6px'
                       }}>
+                        <button
+                          onClick={() => handleTogglePin(msg.id, msg.isPinned)}
+                          title={msg.isPinned ? "Unpin Message" : "Pin Message to Top"}
+                          style={{ background: 'none', border: 'none', color: msg.isPinned ? theme.primary : '#8696a0', cursor: 'pointer', fontSize: '11px', padding: 0 }}
+                        >
+                          📌
+                        </button>
+                        <button
+                          onClick={() => handleToggleStar(msg.id)}
+                          title={msg.isStarred ? "Unstar Message" : "Star Message"}
+                          style={{ background: 'none', border: 'none', color: msg.isStarred ? '#ffcc00' : '#8696a0', cursor: 'pointer', fontSize: '11px', padding: 0 }}
+                        >
+                          {msg.isStarred ? '⭐' : '☆'}
+                        </button>
                         <button
                           onClick={() => setReplyingToMessage(msg)}
                           title="Quote & Reply"
@@ -3120,6 +3348,28 @@ function App() {
                       </button>
                     )}
 
+                    {/* Live Screen Sharing */}
+                    {callType === 'video' && callState === 'connected' && (
+                      <button
+                        onClick={toggleScreenShare}
+                        title={isScreenSharing ? "Stop Sharing Screen" : "Share Live Screen"}
+                        style={{
+                          width: '50px',
+                          height: '50px',
+                          borderRadius: '50%',
+                          backgroundColor: isScreenSharing ? '#6366f1' : 'rgba(255,255,255,0.12)',
+                          color: '#ffffff',
+                          border: 'none',
+                          fontSize: '22px',
+                          cursor: 'pointer',
+                          boxShadow: isScreenSharing ? '0 0 16px #6366f1aa' : 'none',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        🖥️
+                      </button>
+                    )}
+
                     {/* Live Translator & Subtitles Toggle */}
                     {callState === 'connected' && (
                       <button
@@ -3146,6 +3396,34 @@ function App() {
                         }}
                       >
                         💬
+                      </button>
+                    )}
+
+                    {/* Live Voice Readout (TTS) */}
+                    {callState === 'connected' && (
+                      <button
+                        onClick={() => {
+                          const nextState = !isTtsEnabled
+                          setIsTtsEnabled(nextState)
+                          if (nextState && activeSubtitlePayload) {
+                            speakText(activeSubtitlePayload.translatedText || activeSubtitlePayload.originalText, myTargetLanguage)
+                          }
+                        }}
+                        title={isTtsEnabled ? "Disable Live Voice Readout (TTS)" : "Enable Live Voice Readout (TTS)"}
+                        style={{
+                          width: '50px',
+                          height: '50px',
+                          borderRadius: '50%',
+                          backgroundColor: isTtsEnabled ? '#f59e0b' : 'rgba(255,255,255,0.12)',
+                          color: isTtsEnabled ? '#051312' : '#ffffff',
+                          border: 'none',
+                          fontSize: '22px',
+                          cursor: 'pointer',
+                          boxShadow: isTtsEnabled ? '0 0 16px #f59e0baa' : 'none',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        🔊
                       </button>
                     )}
 
