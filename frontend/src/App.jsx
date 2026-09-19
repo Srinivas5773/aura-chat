@@ -329,13 +329,26 @@ function App() {
   const [isScreenSharing, setIsScreenSharing] = useState(false)
   const screenStreamRef = useRef(null)
 
-  // Feature 4: Live Voice Readout (TTS) State
+  // Partner Screen Sharing State
+  const [partnerScreenSharing, setPartnerScreenSharing] = useState(false)
+
+  // Feature 4: Live Voice Readout (TTS) State with Natural Female Voice Selection
   const [isTtsEnabled, setIsTtsEnabled] = useState(false)
   const isTtsEnabledRef = useRef(isTtsEnabled)
 
   useEffect(() => {
     isTtsEnabledRef.current = isTtsEnabled
   }, [isTtsEnabled])
+
+  // Pre-load voices on browser load
+  useEffect(() => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.getVoices()
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices()
+      }
+    }
+  }, [])
 
   const speakText = (text, langCode) => {
     if (!('speechSynthesis' in window) || !text) return
@@ -345,11 +358,50 @@ function App() {
       const locale = getSpeechLocale(langCode || 'en')
       utterance.lang = locale
       utterance.rate = 1.0
-      utterance.pitch = 1.0
+      utterance.pitch = 1.25 // Higher feminine pitch tuning for clear female voice
 
       const voices = window.speechSynthesis.getVoices()
-      const targetVoice = voices.find(v => v.lang.replace('_', '-') === locale || v.lang.startsWith(langCode))
-      if (targetVoice) utterance.voice = targetVoice
+      const localeLower = locale.toLowerCase()
+      const langLower = (langCode || 'en').toLowerCase()
+
+      // Prioritize female voices for target language
+      let femaleVoice = voices.find(v => {
+        const vLang = v.lang.toLowerCase().replace('_', '-')
+        const vName = v.name.toLowerCase()
+        const isMatch = vLang === localeLower || vLang.startsWith(langLower)
+        const isFemale = vName.includes('female') || 
+                          vName.includes('zira') || 
+                          vName.includes('samantha') || 
+                          vName.includes('victoria') || 
+                          vName.includes('karen') || 
+                          vName.includes('moira') || 
+                          vName.includes('fiona') || 
+                          vName.includes('kalpana') || 
+                          vName.includes('heera') || 
+                          vName.includes('swara') || 
+                          vName.includes('neerja') || 
+                          vName.includes('google') || 
+                          vName.includes('natural')
+        return isMatch && isFemale
+      })
+
+      if (!femaleVoice) {
+        femaleVoice = voices.find(v => {
+          const vLang = v.lang.toLowerCase().replace('_', '-')
+          return vLang === localeLower || vLang.startsWith(langLower)
+        })
+      }
+
+      if (!femaleVoice) {
+        femaleVoice = voices.find(v => {
+          const vName = v.name.toLowerCase()
+          return vName.includes('female') || vName.includes('zira') || vName.includes('samantha') || vName.includes('google')
+        })
+      }
+
+      if (femaleVoice) {
+        utterance.voice = femaleVoice
+      }
 
       window.speechSynthesis.speak(utterance)
     } catch (e) {
@@ -371,25 +423,38 @@ function App() {
   }
 
   const toggleScreenShare = async () => {
+    const activeSocket = socketRef.current || socket
+    const currentRoomId = roomIdRef.current || roomId
+    const currentUserName = userNameRef.current || userName
+
     if (isScreenSharing) {
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach(t => t.stop())
         screenStreamRef.current = null
       }
       setIsScreenSharing(false)
+
       if (peerConnectionRef.current && localStreamRef.current) {
         const cameraTrack = localStreamRef.current.getVideoTracks()[0]
-        const sender = peerConnectionRef.current.getSenders().find(s => s.track?.kind === 'video')
-        if (sender && cameraTrack) {
-          try { await sender.replaceTrack(cameraTrack) } catch (e) { console.error('Error restoring camera track:', e) }
+        const senders = peerConnectionRef.current.getSenders()
+        const videoSender = senders.find(s => s.track && s.track.kind === 'video') || senders[0]
+        if (videoSender && cameraTrack) {
+          try { await videoSender.replaceTrack(cameraTrack) } catch (e) { console.error('Error restoring camera track:', e) }
         }
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = localStreamRef.current
         }
       }
+
+      if (activeSocket && currentRoomId) {
+        activeSocket.emit('toggle_screen_share', { roomId: currentRoomId, isSharing: false, userName: currentUserName })
+      }
     } else {
       try {
-        const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+        const displayStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: "always" },
+          audio: false
+        })
         screenStreamRef.current = displayStream
         const screenVideoTrack = displayStream.getVideoTracks()[0]
 
@@ -399,17 +464,23 @@ function App() {
           }
 
           if (peerConnectionRef.current) {
-            const sender = peerConnectionRef.current.getSenders().find(s => s.track?.kind === 'video')
-            if (sender) {
-              await sender.replaceTrack(screenVideoTrack)
+            const senders = peerConnectionRef.current.getSenders()
+            const videoSender = senders.find(s => s.track && s.track.kind === 'video')
+            if (videoSender) {
+              await videoSender.replaceTrack(screenVideoTrack)
+            } else {
+              peerConnectionRef.current.addTrack(screenVideoTrack, displayStream)
             }
           }
 
-          // Keep local video element bound to camera stream to prevent hall-of-mirrors infinity loop
           if (localVideoRef.current && localStreamRef.current) {
             localVideoRef.current.srcObject = localStreamRef.current
           }
           setIsScreenSharing(true)
+
+          if (activeSocket && currentRoomId) {
+            activeSocket.emit('toggle_screen_share', { roomId: currentRoomId, isSharing: true, userName: currentUserName })
+          }
         }
       } catch (err) {
         console.warn('Screen sharing cancelled or unavailable:', err)
@@ -766,6 +837,7 @@ function App() {
       screenStreamRef.current = null
     }
     setIsScreenSharing(false)
+    setPartnerScreenSharing(false)
     setCallState(null)
     setIncomingSdpOffer(null)
     setIsMicMuted(false)
@@ -976,6 +1048,15 @@ function App() {
       setTimeout(() => {
         setScreenshotAlert(null)
       }, 4500)
+    })
+
+    newSocket.on('screen_share_updated', ({ isSharing, senderName }) => {
+      console.log('Screen share updated from partner:', isSharing, senderName)
+      setPartnerScreenSharing(isSharing)
+      if (remoteVideoRef.current && remoteStreamRef.current) {
+        remoteVideoRef.current.srcObject = remoteStreamRef.current
+        remoteVideoRef.current.play().catch(e => console.warn('Remote video play notice:', e))
+      }
     })
 
     newSocket.on('call_subtitle', async (payload) => {
@@ -3124,6 +3205,12 @@ function App() {
                       </span>
                     )}
                   </div>
+                  {callState === 'connected' && (isScreenSharing || partnerScreenSharing) && (
+                    <div style={{ fontSize: '12px', color: '#818cf8', fontWeight: 'bold', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span>🖥️</span>
+                      <span>{isScreenSharing ? 'You are sharing your screen live' : `${otherUserName} is sharing screen live`}</span>
+                    </div>
+                  )}
                 </div>
 
                 {callType === 'video' && callState === 'connected' && (
