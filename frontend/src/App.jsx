@@ -1541,8 +1541,11 @@ function App() {
                 alignItems: 'center'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <img src="/aura-logo.png" alt="AURA" style={{ height: '24px', borderRadius: '4px' }} />
+                  <img src="/aura-logo.png" alt="AURA" style={{ height: '26px', borderRadius: '6px' }} />
                   <span style={{ fontSize: '18px', fontWeight: 'bold', color: theme.primary, letterSpacing: '1px' }}>AURA</span>
+                  <span className="developer-shining-text" style={{ fontSize: '10px', fontWeight: '900', border: `1px solid ${theme.primary}66`, padding: '2px 8px', borderRadius: '12px', backgroundColor: 'rgba(0,245,196,0.1)' }}>
+                    BY SRINIVAS
+                  </span>
                 </div>
 
                 <button
@@ -1698,45 +1701,35 @@ function App() {
                   🎲 Create New Random Room
                 </button>
 
-                <a
-                  href="https://github.com/Srinivas5773/aura-chat/releases/download/v1.0.0/AURA-v1.0.apk"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    width: '100%',
-                    maxWidth: '280px',
-                    padding: '12px',
-                    backgroundColor: 'rgba(0, 245, 196, 0.08)',
-                    color: theme.primary,
-                    border: `1px dashed ${theme.primary}88`,
-                    borderRadius: '25px',
-                    fontSize: '13px',
-                    fontWeight: 'bold',
-                    textDecoration: 'none',
-                    textAlign: 'center',
-                    marginTop: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 10px rgba(0,0,0,0.3)'
-                  }}
-                >
-                  <span>📲</span>
-                  <span>Download Android APK</span>
-                </a>
               </div>
 
               <div style={{
                 padding: '16px 14px',
                 textAlign: 'center',
-                borderTop: '1px solid rgba(0, 245, 196, 0.15)',
-                backgroundColor: 'rgba(0, 245, 196, 0.02)'
+                borderTop: '1px solid rgba(0, 245, 196, 0.25)',
+                backgroundColor: 'rgba(0, 245, 196, 0.04)',
+                backdropFilter: 'blur(10px)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '4px'
               }}>
-                <span className="developer-shining-text">
-                  ✨ Developed by Srinivas ✨
-                </span>
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 22px',
+                  borderRadius: '30px',
+                  backgroundColor: 'rgba(5, 24, 21, 0.9)',
+                  border: `1.5px solid ${theme.primary}`,
+                  boxShadow: `0 0 25px ${theme.primary}66, 0 4px 15px rgba(0,0,0,0.6)`
+                }}>
+                  <span style={{ fontSize: '16px' }}>👑</span>
+                  <span className="developer-shining-text" style={{ fontSize: '14px', fontWeight: '900', letterSpacing: '2.5px' }}>
+                    CRAFTED BY SRINIVAS
+                  </span>
+                  <span style={{ fontSize: '16px' }}>✨</span>
+                </div>
               </div>
             </div>
           ) : (
