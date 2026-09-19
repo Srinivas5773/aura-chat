@@ -325,13 +325,6 @@ function App() {
   // Feature 1: Screenshot Guard State
   const [screenshotAlert, setScreenshotAlert] = useState(null)
 
-  // Feature 2: Live Screen Sharing State
-  const [isScreenSharing, setIsScreenSharing] = useState(false)
-  const screenStreamRef = useRef(null)
-
-  // Partner Screen Sharing State
-  const [partnerScreenSharing, setPartnerScreenSharing] = useState(false)
-
   // Feature 4: Live Voice Readout (TTS) State with Natural Female Voice Selection
   const [isTtsEnabled, setIsTtsEnabled] = useState(false)
   const isTtsEnabledRef = useRef(isTtsEnabled)
@@ -420,72 +413,6 @@ function App() {
 
   const handleToggleStar = (messageId) => {
     setMessages(prev => prev.map(m => m.id === messageId ? { ...m, isStarred: !m.isStarred } : m))
-  }
-
-  const toggleScreenShare = async () => {
-    const activeSocket = socketRef.current || socket
-    const currentRoomId = roomIdRef.current || roomId
-    const currentUserName = userNameRef.current || userName
-
-    if (isScreenSharing) {
-      if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach(t => t.stop())
-        screenStreamRef.current = null
-      }
-      setIsScreenSharing(false)
-
-      if (peerConnectionRef.current && localStreamRef.current) {
-        const cameraTrack = localStreamRef.current.getVideoTracks()[0]
-        const senders = peerConnectionRef.current.getSenders()
-        const videoSender = senders.find(s => s.track && s.track.kind === 'video') || senders[0]
-        if (videoSender && cameraTrack) {
-          try { await videoSender.replaceTrack(cameraTrack) } catch (e) { console.error('Error restoring camera track:', e) }
-        }
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = localStreamRef.current
-        }
-      }
-
-      if (activeSocket && currentRoomId) {
-        activeSocket.emit('toggle_screen_share', { roomId: currentRoomId, isSharing: false, userName: currentUserName })
-      }
-    } else {
-      try {
-        const displayStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { cursor: "always" },
-          audio: false
-        })
-        screenStreamRef.current = displayStream
-        const screenVideoTrack = displayStream.getVideoTracks()[0]
-
-        if (screenVideoTrack) {
-          screenVideoTrack.onended = () => {
-            toggleScreenShare()
-          }
-
-          if (peerConnectionRef.current) {
-            const senders = peerConnectionRef.current.getSenders()
-            const videoSender = senders.find(s => s.track && s.track.kind === 'video')
-            if (videoSender) {
-              await videoSender.replaceTrack(screenVideoTrack)
-            } else {
-              peerConnectionRef.current.addTrack(screenVideoTrack, displayStream)
-            }
-          }
-
-          if (localVideoRef.current && localStreamRef.current) {
-            localVideoRef.current.srcObject = localStreamRef.current
-          }
-          setIsScreenSharing(true)
-
-          if (activeSocket && currentRoomId) {
-            activeSocket.emit('toggle_screen_share', { roomId: currentRoomId, isSharing: true, userName: currentUserName })
-          }
-        }
-      } catch (err) {
-        console.warn('Screen sharing cancelled or unavailable:', err)
-      }
-    }
   }
 
   useEffect(() => {
@@ -1048,15 +975,6 @@ function App() {
       setTimeout(() => {
         setScreenshotAlert(null)
       }, 4500)
-    })
-
-    newSocket.on('screen_share_updated', ({ isSharing, senderName }) => {
-      console.log('Screen share updated from partner:', isSharing, senderName)
-      setPartnerScreenSharing(isSharing)
-      if (remoteVideoRef.current && remoteStreamRef.current) {
-        remoteVideoRef.current.srcObject = remoteStreamRef.current
-        remoteVideoRef.current.play().catch(e => console.warn('Remote video play notice:', e))
-      }
     })
 
     newSocket.on('call_subtitle', async (payload) => {
@@ -3205,12 +3123,6 @@ function App() {
                       </span>
                     )}
                   </div>
-                  {callState === 'connected' && (isScreenSharing || partnerScreenSharing) && (
-                    <div style={{ fontSize: '12px', color: '#818cf8', fontWeight: 'bold', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span>🖥️</span>
-                      <span>{isScreenSharing ? 'You are sharing your screen live' : `${otherUserName} is sharing screen live`}</span>
-                    </div>
-                  )}
                 </div>
 
                 {callType === 'video' && callState === 'connected' && (
@@ -3463,28 +3375,6 @@ function App() {
                     {callType === 'video' && (
                       <button onClick={toggleVideoMute} title="Toggle Camera" style={{ width: '50px', height: '50px', borderRadius: '50%', backgroundColor: isVideoMuted ? '#f15c6b' : 'rgba(255,255,255,0.12)', color: 'white', border: 'none', fontSize: '22px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
                         {isVideoMuted ? '🚫' : '📹'}
-                      </button>
-                    )}
-
-                    {/* Live Screen Sharing */}
-                    {callType === 'video' && callState === 'connected' && (
-                      <button
-                        onClick={toggleScreenShare}
-                        title={isScreenSharing ? "Stop Sharing Screen" : "Share Live Screen"}
-                        style={{
-                          width: '50px',
-                          height: '50px',
-                          borderRadius: '50%',
-                          backgroundColor: isScreenSharing ? '#6366f1' : 'rgba(255,255,255,0.12)',
-                          color: '#ffffff',
-                          border: 'none',
-                          fontSize: '22px',
-                          cursor: 'pointer',
-                          boxShadow: isScreenSharing ? '0 0 16px #6366f1aa' : 'none',
-                          transition: 'all 0.2s ease'
-                        }}
-                      >
-                        🖥️
                       </button>
                     )}
 

@@ -174,11 +174,6 @@ io.on('connection', (socket) => {
     console.log(`Screenshot alert by ${userName} in room ${roomId}`);
     socket.to(roomId).emit('screenshot_alert', { userName, timestamp: Date.now() });
   });
-
-  socket.on('toggle_screen_share', ({ roomId, isSharing, userName }) => {
-    console.log(`Screen share toggled by ${userName} in room ${roomId}: ${isSharing}`);
-    socket.to(roomId).emit('screen_share_updated', { isSharing, senderName: userName });
-  });
   
   socket.on('toggle_ghost_mode', ({ roomId, enabled, timer }) => {
     const room = rooms[roomId];
