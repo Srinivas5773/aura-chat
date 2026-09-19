@@ -219,12 +219,18 @@ function App() {
   const userNameRef = useRef(userName)
   const roomIdRef = useRef(roomId)
   const isJoinedRef = useRef(isJoined)
+  const socketRef = useRef(socket)
+  const myTargetLanguageRef = useRef('en')
+  const mySpokenLanguageRef = useRef('hi')
+  const lastSentTextRef = useRef('')
+  const translationDebounceRef = useRef(null)
 
   useEffect(() => {
     userNameRef.current = userName
     roomIdRef.current = roomId
     isJoinedRef.current = isJoined
-  }, [userName, roomId, isJoined])
+    socketRef.current = socket
+  }, [userName, roomId, isJoined, socket])
 
   // Check for room parameter in URL on load
   useEffect(() => {
@@ -289,6 +295,11 @@ function App() {
   const [myTargetLanguage, setMyTargetLanguage] = useState('en')
   const [showLanguagePicker, setShowLanguagePicker] = useState(false)
   const [activeSubtitlePayload, setActiveSubtitlePayload] = useState(null)
+
+  useEffect(() => {
+    mySpokenLanguageRef.current = mySpokenLanguage
+    myTargetLanguageRef.current = myTargetLanguage
+  }, [mySpokenLanguage, myTargetLanguage])
 
   const speechRecognizerRef = useRef(null)
   const subtitleTimerRef = useRef(null)
@@ -471,10 +482,10 @@ function App() {
     let recognition = null
     let isComponentMounted = true
 
-    if (isSubtitlesEnabled && callState === 'connected') {
+    if (isSubtitlesEnabled && callState === 'connected' && !isMicMuted) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
       if (!SpeechRecognition) {
-        alert('Live Speech Recognition is not supported by your browser or device.')
+        alert('Live Speech Recognition is not supported by your browser or device. Please use Google Chrome, Microsoft Edge, or Safari.')
         setIsSubtitlesEnabled(false)
         return
       }
@@ -483,33 +494,50 @@ function App() {
         recognition = new SpeechRecognition()
         recognition.continuous = true
         recognition.interimResults = true
-        recognition.lang = getSpeechLocale(mySpokenLanguage)
+        recognition.lang = getSpeechLocale(mySpokenLanguageRef.current || mySpokenLanguage)
 
         recognition.onresult = async (event) => {
-          let finalTranscript = ''
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-              finalTranscript += event.results[i][0].transcript
+          let combinedTranscript = ''
+          for (let i = 0; i < event.results.length; ++i) {
+            if (event.results[i][0] && event.results[i][0].transcript) {
+              combinedTranscript += event.results[i][0].transcript + ' '
             }
           }
 
-          const spokenText = finalTranscript.trim()
-          if (spokenText) {
-            const translated = await translateTextFree(spokenText, myTargetLanguage)
+          const spokenText = combinedTranscript.trim()
+          if (!spokenText || spokenText === lastSentTextRef.current) return
+
+          lastSentTextRef.current = spokenText
+
+          // Immediate local subtitle rendering for the speaker
+          setActiveSubtitlePayload({
+            senderName: userNameRef.current || 'You',
+            originalText: spokenText,
+            translatedText: spokenText,
+            isMine: true
+          })
+
+          // Debounced free translation & socket relay
+          if (translationDebounceRef.current) clearTimeout(translationDebounceRef.current)
+          translationDebounceRef.current = setTimeout(async () => {
+            const targetLang = myTargetLanguageRef.current || myTargetLanguage || 'en'
+            const translated = await translateTextFree(spokenText, targetLang)
+
             const payload = {
-              roomId,
-              senderName: userName || 'Partner',
+              roomId: roomIdRef.current || roomId,
+              senderName: userNameRef.current || 'Partner',
               originalText: spokenText,
               translatedText: translated,
-              targetLang: myTargetLanguage
+              targetLang: targetLang
             }
 
-            if (socket) {
-              socket.emit('call_subtitle', payload)
+            const activeSocket = socketRef.current || socket
+            if (activeSocket) {
+              activeSocket.emit('call_subtitle', payload)
             }
 
             setActiveSubtitlePayload({
-              senderName: userName || 'You',
+              senderName: userNameRef.current || 'You',
               originalText: spokenText,
               translatedText: translated,
               isMine: true
@@ -519,16 +547,28 @@ function App() {
             subtitleTimerRef.current = setTimeout(() => {
               if (isComponentMounted) setActiveSubtitlePayload(null)
             }, 6000)
-          }
+          }, 350)
         }
 
         recognition.onerror = (event) => {
-          console.warn('Speech Recognition notice:', event.error)
+          console.warn('Speech Recognition notice/error:', event.error)
+          if (event.error === 'not-allowed') {
+            alert('Microphone permission for Speech Recognition was denied. Please allow mic access in browser/device settings.')
+            setIsSubtitlesEnabled(false)
+          }
         }
 
         recognition.onend = () => {
-          if (isComponentMounted && isSubtitlesEnabled && callState === 'connected') {
-            try { recognition.start() } catch (e) {}
+          if (isComponentMounted && isSubtitlesEnabled && callState === 'connected' && !isMicMuted) {
+            setTimeout(() => {
+              try {
+                if (speechRecognizerRef.current && isSubtitlesEnabled) {
+                  speechRecognizerRef.current.start()
+                }
+              } catch (e) {
+                console.warn('Speech recognition restart quiet fallback:', e)
+              }
+            }, 400)
           }
         }
 
@@ -550,7 +590,7 @@ function App() {
         try { recognition.stop() } catch (e) {}
       }
     }
-  }, [isSubtitlesEnabled, callState, mySpokenLanguage, myTargetLanguage, roomId, socket, userName])
+  }, [isSubtitlesEnabled, callState, isMicMuted, mySpokenLanguage, myTargetLanguage, roomId, socket, userName])
 
   // Cleanup WebRTC Call & Streams
   const cleanupCall = () => {
@@ -567,6 +607,8 @@ function App() {
       speechRecognizerRef.current = null
     }
     if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current)
+    if (translationDebounceRef.current) clearTimeout(translationDebounceRef.current)
+    lastSentTextRef.current = ''
     setActiveSubtitlePayload(null)
     setIsSubtitlesEnabled(false)
     setShowLanguagePicker(false)
@@ -772,12 +814,27 @@ function App() {
       cleanupCall()
     })
 
-    newSocket.on('call_subtitle', (payload) => {
-      setActiveSubtitlePayload(payload)
+    newSocket.on('call_subtitle', async (payload) => {
+      let displayTranslated = payload.translatedText
+      if (payload.originalText) {
+        try {
+          const myTarget = myTargetLanguageRef.current || 'en'
+          displayTranslated = await translateTextFree(payload.originalText, myTarget)
+        } catch (err) {
+          console.error('Receiver auto-translation error:', err)
+        }
+      }
+
+      setActiveSubtitlePayload({
+        ...payload,
+        translatedText: displayTranslated || payload.translatedText || payload.originalText,
+        isMine: false
+      })
+
       if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current)
       subtitleTimerRef.current = setTimeout(() => {
         setActiveSubtitlePayload(null)
-      }, 6000)
+      }, 7000)
     })
 
     newSocket.on('ghost_mode_updated', ({ enabled, timer }) => {
@@ -2664,6 +2721,11 @@ function App() {
                     {callState === 'outgoing' && 'Ringing...'}
                     {callState === 'incoming' && 'Incoming Call...'}
                     {callState === 'connected' && `🟢 Live • ${formatCallDuration(callDuration)}`}
+                    {callState === 'connected' && isSubtitlesEnabled && (
+                      <span style={{ marginLeft: '8px', color: theme.primary, fontWeight: 'bold' }}>
+                        • 💬 Translator Active ({mySpokenLanguage.toUpperCase()} ➔ {myTargetLanguage.toUpperCase()})
+                      </span>
+                    )}
                   </div>
                 </div>
 
