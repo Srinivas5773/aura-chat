@@ -503,7 +503,7 @@ function App() {
     }
   }, [callState])
 
-  // Real-Time Speech Recognition & Free Translation Effect for Live Call Subtitles
+  // Real-Time Non-Blocking Speech Recognition Engine for Live Subtitles
   useEffect(() => {
     let recognition = null
     let isComponentMounted = true
@@ -522,7 +522,8 @@ function App() {
         recognition.interimResults = true
         recognition.lang = getSpeechLocale(mySpokenLanguageRef.current || mySpokenLanguage)
 
-        recognition.onresult = async (event) => {
+        // NON-BLOCKING SYNCHRONOUS ONRESULT (Executes in 0ms to prevent mic flickering and Chrome speech worker timeout)
+        recognition.onresult = (event) => {
           let interimText = ''
           let finalText = ''
 
@@ -538,10 +539,7 @@ function App() {
           const currentLiveSpeech = (finalText || interimText).trim()
           if (!currentLiveSpeech) return
 
-          const srcLang = mySpokenLanguageRef.current || mySpokenLanguage || 'hi'
-          const tgtLang = myTargetLanguageRef.current || myTargetLanguage || 'en'
-
-          // 1. Render immediate live speech feedback for the speaker
+          // 1. Synchronously update local live subtitle display for speaker
           setActiveSubtitlePayload({
             senderName: userNameRef.current || 'You',
             originalText: currentLiveSpeech,
@@ -549,40 +547,46 @@ function App() {
             isMine: true
           })
 
-          // 2. Translate and relay finalized spoken phrases via Socket
+          // 2. Decoupled background process for translation & socket emission (non-blocking)
           if (finalText.trim()) {
             const cleanFinal = finalText.trim()
             if (cleanFinal !== lastSentTextRef.current) {
               lastSentTextRef.current = cleanFinal
 
-              const translated = await translateTextFree(cleanFinal, tgtLang, srcLang)
+              ;(async () => {
+                const srcLang = mySpokenLanguageRef.current || mySpokenLanguage || 'hi'
+                const tgtLang = myTargetLanguageRef.current || myTargetLanguage || 'en'
+                const translated = await translateTextFree(cleanFinal, tgtLang, srcLang)
 
-              const payload = {
-                roomId: roomIdRef.current || roomId,
-                senderName: userNameRef.current || 'Partner',
-                originalText: cleanFinal,
-                translatedText: translated,
-                sourceLang: srcLang,
-                targetLang: tgtLang
-              }
+                const payload = {
+                  roomId: roomIdRef.current || roomId,
+                  senderName: userNameRef.current || 'Partner',
+                  originalText: cleanFinal,
+                  translatedText: translated,
+                  sourceLang: srcLang,
+                  targetLang: tgtLang
+                }
 
-              const activeSocket = socketRef.current || socket
-              if (activeSocket) {
-                console.log('Emitting call_subtitle to partner:', payload)
-                activeSocket.emit('call_subtitle', payload)
-              }
+                const activeSocket = socketRef.current || socket
+                if (activeSocket) {
+                  console.log('Emitting call_subtitle to partner:', payload)
+                  activeSocket.emit('call_subtitle', payload)
+                }
 
-              setActiveSubtitlePayload({
-                senderName: userNameRef.current || 'You',
-                originalText: cleanFinal,
-                translatedText: translated,
-                isMine: true
-              })
+                if (isComponentMounted) {
+                  setActiveSubtitlePayload({
+                    senderName: userNameRef.current || 'You',
+                    originalText: cleanFinal,
+                    translatedText: translated,
+                    isMine: true
+                  })
 
-              if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current)
-              subtitleTimerRef.current = setTimeout(() => {
-                if (isComponentMounted) setActiveSubtitlePayload(null)
-              }, 6500)
+                  if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current)
+                  subtitleTimerRef.current = setTimeout(() => {
+                    if (isComponentMounted) setActiveSubtitlePayload(null)
+                  }, 6500)
+                }
+              })()
             }
           }
         }
@@ -590,7 +594,7 @@ function App() {
         recognition.onerror = (event) => {
           console.warn('Speech Recognition notice:', event.error)
           if (event.error === 'not-allowed') {
-            alert('Microphone permission for Speech Recognition was denied. Please allow mic access in browser/device settings.')
+            alert('Microphone permission for Speech Recognition was denied. Please allow mic access in browser settings.')
             setIsSubtitlesEnabled(false)
           }
         }
@@ -605,7 +609,7 @@ function App() {
               } catch (e) {
                 console.warn('Speech recognition restart quiet fallback:', e)
               }
-            }, 300)
+            }, 500)
           }
         }
 
