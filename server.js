@@ -141,7 +141,7 @@ io.on('connection', (socket) => {
 
   socket.on('reject_call', ({ roomId }) => {
     console.log(`WebRTC Call rejected in room ${roomId}`);
-    socket.to(roomId).emit('call_rejected');
+    io.to(roomId).emit('call_ended');
   });
 
   socket.on('webrtc_ice_candidate', ({ roomId, candidate }) => {
@@ -207,6 +207,7 @@ io.on('connection', (socket) => {
       if (userIndex !== -1) {
         const disconnectedUser = room.users[userIndex];
         room.users.splice(userIndex, 1);
+        socket.to(roomId).emit('call_ended');
         socket.to(roomId).emit('user_left', { 
           userCount: room.users.length,
           leftUser: disconnectedUser,

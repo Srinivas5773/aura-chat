@@ -736,13 +736,35 @@ function App() {
 
   // Cleanup WebRTC Call & Streams
   const cleanupCall = () => {
+    console.log('Cleaning up WebRTC call state and media streams...')
     if (peerConnectionRef.current) {
-      peerConnectionRef.current.close()
+      try {
+        peerConnectionRef.current.getSenders().forEach(sender => {
+          if (sender.track) {
+            try { sender.track.stop() } catch (e) {}
+          }
+        })
+        peerConnectionRef.current.close()
+      } catch (e) {
+        console.warn('Error closing peerConnection:', e)
+      }
       peerConnectionRef.current = null
     }
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop())
+      try {
+        localStreamRef.current.getTracks().forEach(track => {
+          try { track.stop() } catch (e) {}
+        })
+      } catch (e) {}
       localStreamRef.current = null
+    }
+    if (remoteStreamRef.current) {
+      try {
+        remoteStreamRef.current.getTracks().forEach(track => {
+          try { track.stop() } catch (e) {}
+        })
+      } catch (e) {}
+      remoteStreamRef.current = null
     }
     if (speechRecognizerRef.current) {
       try { speechRecognizerRef.current.stop() } catch (e) {}
@@ -750,27 +772,35 @@ function App() {
     }
     if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current)
     if (translationDebounceRef.current) clearTimeout(translationDebounceRef.current)
+    if (callTimerRef.current) clearInterval(callTimerRef.current)
+
     lastSentTextRef.current = ''
     setActiveSubtitlePayload(null)
     setIsSubtitlesEnabled(false)
     setShowLanguagePicker(false)
-    remoteStreamRef.current = null
     iceCandidatesQueueRef.current = []
-    if (localVideoRef.current) localVideoRef.current.srcObject = null
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
-    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null
-    if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach(track => track.stop())
-      screenStreamRef.current = null
+
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null
+      try { localVideoRef.current.pause() } catch (e) {}
     }
-    setIsScreenSharing(false)
-    setPartnerScreenSharing(false)
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null
+      try { remoteVideoRef.current.pause() } catch (e) {}
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null
+      try { remoteAudioRef.current.pause() } catch (e) {}
+    }
+
     setCallState(null)
     setIncomingSdpOffer(null)
     setIsMicMuted(false)
     setIsVideoMuted(false)
     setFacingMode('user')
     setShowFilterPicker(false)
+    setCallDuration(0)
+    ringtoneManager.stopAll()
   }
 
   // Socket Setup & WebRTC Event Handlers
@@ -1107,8 +1137,24 @@ function App() {
     }
 
     pc.onicecandidate = (event) => {
-      if (event.candidate && socket && roomId) {
-        socket.emit('webrtc_ice_candidate', { roomId, candidate: event.candidate })
+      const activeSocket = socketRef.current || socket
+      const currentRoomId = roomIdRef.current || roomId
+      if (event.candidate && activeSocket && currentRoomId) {
+        activeSocket.emit('webrtc_ice_candidate', { roomId: currentRoomId, candidate: event.candidate })
+      }
+    }
+
+    pc.onconnectionstatechange = () => {
+      console.log('WebRTC Connection State changed:', pc.connectionState)
+      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        cleanupCall()
+      }
+    }
+
+    pc.oniceconnectionstatechange = () => {
+      console.log('WebRTC ICE Connection State changed:', pc.iceConnectionState)
+      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
+        cleanupCall()
       }
     }
 
@@ -1175,7 +1221,10 @@ function App() {
 
   // Start WebRTC Call
   const startCall = async (type) => {
-    if (!socket || !roomId) return
+    const activeSocket = socketRef.current || socket
+    const currentRoomId = roomIdRef.current || roomId
+    if (!activeSocket || !currentRoomId) return
+
     iceCandidatesQueueRef.current = []
     setCallType(type)
     setCallState('outgoing')
@@ -1192,10 +1241,10 @@ function App() {
       })
       await pc.setLocalDescription(offer)
 
-      socket.emit('call_user', {
-        roomId,
+      activeSocket.emit('call_user', {
+        roomId: currentRoomId,
         callType: type,
-        callerName: userName || 'You',
+        callerName: userNameRef.current || userName || 'You',
         sdpOffer: offer
       })
     } catch (err) {
@@ -1207,7 +1256,9 @@ function App() {
 
   // Accept Call
   const acceptCall = async () => {
-    if (!socket || !roomId || !incomingSdpOffer) return
+    const activeSocket = socketRef.current || socket
+    const currentRoomId = roomIdRef.current || roomId
+    if (!activeSocket || !currentRoomId || !incomingSdpOffer) return
     setCallState('connected')
 
     try {
@@ -1225,7 +1276,7 @@ function App() {
 
       await processQueuedIceCandidates()
 
-      socket.emit('accept_call', { roomId, sdpAnswer: answer })
+      activeSocket.emit('accept_call', { roomId: currentRoomId, sdpAnswer: answer })
     } catch (err) {
       console.error('Error accepting WebRTC call:', err)
       cleanupCall()
@@ -1233,14 +1284,24 @@ function App() {
   }
 
   const rejectCall = () => {
+    const activeSocket = socketRef.current || socket
+    const currentRoomId = roomIdRef.current || roomId
+    console.log('Rejecting call in room:', currentRoomId)
     ringtoneManager.playCallEndedSound()
-    if (socket && roomId) socket.emit('reject_call', { roomId })
+    if (activeSocket && currentRoomId) {
+      activeSocket.emit('reject_call', { roomId: currentRoomId })
+    }
     cleanupCall()
   }
 
   const endCall = () => {
+    const activeSocket = socketRef.current || socket
+    const currentRoomId = roomIdRef.current || roomId
+    console.log('Ending call in room:', currentRoomId)
     ringtoneManager.playCallEndedSound()
-    if (socket && roomId) socket.emit('end_call', { roomId })
+    if (activeSocket && currentRoomId) {
+      activeSocket.emit('end_call', { roomId: currentRoomId })
+    }
     cleanupCall()
   }
 
